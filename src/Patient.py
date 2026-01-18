@@ -28,22 +28,15 @@ DEPENDENCIES:
     - Date
 """
 
-import Date
+from Date import Date
 
 class Patient:
-    def __init__(self):
-        self.first_name = "John"
-        self.last_name = "Doe"
-        self.title = "Mr."
-        self.street = "123 Main Street"
-        self.address = "Anytown, USA 12345"
-        self.birthday = Date()
-    
     def __init__(self, first_name: str, last_name: str, title: str, 
-                 address: str, birthday: Date):
+                 street: str, address: str, birthday: Date):
         self.first_name = first_name
         self.last_name = last_name
         self.title = title
+        self.street = street
         self.address = address
         self.birthday = birthday
         

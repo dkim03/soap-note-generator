@@ -61,11 +61,6 @@ months = {
 }
 
 class Date:
-    def __init__(self):
-        self.month = UNSET
-        self.day = UNSET
-        self.year = UNSET
-    
     def __init__(self, month: int, day: int, year: int):
         if (self._is_bad_date(month, day, year)):
             # set variables to default

@@ -36,8 +36,8 @@ import os
 import re
 
 # custom classes
-import Date
-import Patient
+from Date import Date
+from Patient import Patient
 
 # ------------------------------------------------------------------------------------------------------------------------
 #                                             AutoSOAP EXECUTION FLOW outline
@@ -133,7 +133,7 @@ import Patient
 # - None
         
 def main():
-    Patient()
+    pass
     
 if __name__ == "__main__":
     main()
