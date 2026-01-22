@@ -10,7 +10,7 @@ Modified: 01-16-2026,
 Version: 1.0.0
 
 USAGE:
-    - Instantiate with or without args. Can retrieve specific information using
+    - Instantiate with args. Can retrieve specific information using
     getter methods.
     
 PLANNED:
@@ -29,16 +29,18 @@ DEPENDENCIES:
 """
 
 from Date import Date
+from Ratings import Ratings
 
 class Patient:
     def __init__(self, first_name: str, last_name: str, title: str, 
-                 street: str, address: str, birthday: Date):
+                 street: str, address: str, birthday: Date, ratings: Ratings):
         self.first_name = first_name
         self.last_name = last_name
         self.title = title
         self.street = street
         self.address = address
         self.birthday = birthday
+        self.ratings = ratings
         
     def get_full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"
@@ -63,5 +65,8 @@ class Patient:
     
     def get_birthday(self) -> Date:
         return self.birthday
+    
+    def get_ratings(self) -> dict:
+        return self.ratings.get_ratings()
     
 # no need for setters, this is good for now

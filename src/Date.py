@@ -10,7 +10,7 @@ Modified: 01-16-2026,
 Version: 1.0.0
 
 USAGE:
-    - Instantiate with or without args. Can retrieve and set specific information
+    - Instantiate with args. Can retrieve and set specific information
     using getter and setter methods.
     
 PLANNED:
