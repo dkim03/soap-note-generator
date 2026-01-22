@@ -56,6 +56,10 @@ NOTES_PATH = '../' # directory to check for existing soap notes
     
 debug_enabled = False # used to enable/disable debug prints
 patient = None
+cervical_regions = []
+lumbar_regions = []
+muscle_tone_sentences = []
+trigger_point_sentences = []
 
 # ------------------------------------------------------------------------------------------------------------------------
 #                                             AutoSOAP EXECUTION FLOW outline
@@ -139,7 +143,7 @@ patient = None
 #   SINGLE FILL                                 *
 #   > date retrieval                                *
 #   > SOAP note patient info retrieval              X
-#   > rating retrieval                              X
+#   > ratings, etc. retrieval                       *
 #   > note generation algo                          -
 #   PARTIAL FILL                                -
 #   FULL FILL                                   -
@@ -233,7 +237,7 @@ def find_previous_note() -> str:
 
 def retrieve_info_from_SD(filename: str) -> None:
     # retrieve information from prev_note that was found
-    global patient
+    global patient, cervical_regions, lumbar_regions
 
     # read the file
     with open(f"{NOTES_PATH}{filename}", 'r', encoding='cp1252') as f:
@@ -257,9 +261,6 @@ def retrieve_info_from_SD(filename: str) -> None:
     if rating_match:
         rating_sentence = rating_match.group(0)
         
-        if debug_enabled:
-            print(f"[DEBUG]: found -> {rating_sentence}")
-        
         # within found sentence, find pairs
         pair_pattern = r"(?P<complaint>.*?) as a (?P<rating>\d+)"
         pair_matches = re.findall(pair_pattern, rating_sentence)
@@ -271,7 +272,19 @@ def retrieve_info_from_SD(filename: str) -> None:
             clean_complaint = re.sub(r".*?(his|her|and)", "", complaint, flags=re.IGNORECASE).strip()
             clean_complaint = clean_complaint.lstrip(',').strip() # remove comma and any whitespace
             ratings[clean_complaint] = int(rating)
+            
+        # add overall pain and health ratings
+        after_title = normalized.split("Complaint", 1)[-1] # get all words after 'Complaint'
+        all_numbers = re.findall(r"\d+", after_title) # get all numbers
+        pain_health_ratings = {
+            "pain": int(all_numbers[2]), # get pain rating
+            "health": int(all_numbers[5]) # get health rating
+        }
+        ratings.update(pain_health_ratings) # add to ratings dict
         
+        if debug_enabled:
+            print(f"[DEBUG]: rating_sentence -> {rating_sentence}")   
+
     else:
         raise ValueError("Failed to find ratings in note document, check syntax")
     
@@ -282,7 +295,7 @@ def retrieve_info_from_SD(filename: str) -> None:
     if title_match:
         title = title_match.group(1)
         if debug_enabled:
-            print(f"[DEBUG]: read {title}")
+            print(f"[DEBUG]: title -> {title}")
     else:
         raise ValueError("Failed to find title in note document, check syntax")
     
@@ -302,8 +315,8 @@ def retrieve_info_from_SD(filename: str) -> None:
         dob = name_date_match.group('dob').strip()
         
         if debug_enabled:
-            print(f"[DEBUG]: read {name}")
-            print(f"[DEBUG]: read {dob}")
+            print(f"[DEBUG]: name -> {name}")
+            print(f"[DEBUG]: dob -> {dob}")
         
         name_parts = name.strip().split(" ")
         if len(name_parts) != 2:
@@ -328,8 +341,8 @@ def retrieve_info_from_SD(filename: str) -> None:
             address = street_address_match.group('address').strip()
             
             if debug_enabled:
-                print(f"[DEBUG]: read {street}")
-                print(f"[DEBUG]: read {address}")
+                print(f"[DEBUG]: street -> {street}")
+                print(f"[DEBUG]: address -> {address}")
         else:
             raise ValueError("Failed to find street or address in note document, check syntax")
         
@@ -341,17 +354,59 @@ def retrieve_info_from_SD(filename: str) -> None:
             print(f"[DEBUG]: {patient.get_address()}")
             print(f"[DEBUG]: {patient.get_birthday().get_date_readable()}")
             print(f"[DEBUG]: {patient.get_ratings()}")   
-
     else:
         raise ValueError("Failed to extract patient data")     
+    
+    # find regions in regards to tenderness/palpation
+    after_objective = normalized.split("Objective", 1)[-1] # get all words after 'Objective'
+    cervical_regions_matches = re.findall(r"\bC\d+", after_objective, re.IGNORECASE)
+    lumbar_regions_matches = re.findall(r"\bL\d+", after_objective, re.IGNORECASE)
+    
+    if not cervical_regions_matches:
+        print("[INFO]: No cervical regions found, continuing...")
+    else:
+        # remove duplicates and sort
+        cervical_regions = list(dict.fromkeys(cervical_regions_matches))
+        
+    if not lumbar_regions_matches:
+        print("[INFO]: No lumbar regions found, continuing...")
+    else:
+        lumbar_regions = list(dict.fromkeys(lumbar_regions_matches)) 
+    
+    if debug_enabled:
+        print(f"[DEBUG]: cervical_regions -> {cervical_regions}")
+        print(f"[DEBUG]: lumbar_regions -> {lumbar_regions}")
+        
+    # find muscle tone sentences
+    tone_targets = ["hypertonicity", "increased tonus", "muscle tone"]
+    tone_target_group = rf"\b({'|'.join(map(re.escape, tone_targets))})\b"
+    tone_matches = re.findall(rf"([^.]*?{tone_target_group}[^.]*\.)", normalized, re.IGNORECASE)
+    for sentences in tone_matches:
+        sentence = sentences[0]
+        muscle_tone_sentences.append(sentence)
+        
+    # find trigger point sentences
+    trigger_targets = ["trigger points"]
+    trigger_target_group = rf"\b({'|'.join(map(re.escape, trigger_targets))})\b"
+    trigger_matches = re.findall(rf"([^.]*?{trigger_target_group}[^.]*\.)", normalized, re.IGNORECASE)
+    for sentences in trigger_matches:
+        sentence = sentences[0]
+        trigger_point_sentences.append(sentence)
+        
+    if debug_enabled:
+        print(f"[DEBUG]: muscle tone sentences -> {muscle_tone_sentences}")
+        print(f"[DEBUG]: trigger point sentences -> {trigger_point_sentences}")
 
 def do_single_fill() -> None:
     # get patient info for note
     print(f"Retieving patient info...")
+    
     retrieve_info_from_SD(find_previous_note())
+    # retrieve_info_from_SD("SD_opened_with_word_alt.rtf")
     
-    
-    print("\nSUCCESS")
+    print("\n=============")
+    print("|  SUCCESS  |")
+    print("=============\n")
 
 # TODO
 def do_partial_fill() -> None:

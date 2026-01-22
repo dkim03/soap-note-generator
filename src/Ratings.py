@@ -41,7 +41,7 @@ DEPENDENCIES:
 # patient.update(new_data), where new_data is a dict
 
 class Ratings:
-    def __init__(self, rating_dict=None):
+    def __init__(self, rating_dict: dict[str, int]):
         if rating_dict is None:
             rating_dict = {}
         self.ratings = rating_dict
