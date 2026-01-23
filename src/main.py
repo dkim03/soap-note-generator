@@ -53,6 +53,9 @@ class Operations(Enum):
     FULL_FILL = 3
     
 NOTES_PATH = '../' # directory to check for existing soap notes
+ERROR_MSG_PREFIX = "[ERROR]: "
+DEBUG_MSG_PREFIX = "[DEBUG]: "
+INFO_MSG_PREFIX = "[INFO]: "
     
 debug_enabled = False # used to enable/disable debug prints
 patient = None
@@ -60,6 +63,7 @@ cervical_regions = []
 lumbar_regions = []
 muscle_tone_sentences = []
 trigger_point_sentences = []
+rom_sentences = []
 
 # ------------------------------------------------------------------------------------------------------------------------
 #                                             AutoSOAP EXECUTION FLOW outline
@@ -154,10 +158,12 @@ trigger_point_sentences = []
 # OTHER THINGS TO CONSIDER
 # - None
 
+
 def natural_sort_key(s):
     # splits "SD100" into ["SD", 100]
     return [int(text) if text.isdigit() else text.lower() 
             for text in re.split(r'(\d+)', s)]
+    
 
 def ask_for_debug() -> None:
     global debug_enabled # need to declare the global var explicitly
@@ -176,7 +182,8 @@ def ask_for_debug() -> None:
             return
 
         except ValueError as e:
-            print(f"[ERROR]: {e}. Please try again.\n")    
+            print(f"{ERROR_MSG_PREFIX}{e}. Please try again.\n")    
+
 
 def select_function_prompt() -> int:
     # 1 -> single
@@ -196,7 +203,8 @@ def select_function_prompt() -> int:
             return int(user_input)
 
         except ValueError as e:
-            print(f"[ERROR]: {e}. Please try again.\n")
+            print(f"{ERROR_MSG_PREFIX}{e}. Please try again.\n")
+            
             
 def find_previous_note() -> str:
     # check whether soap docs exist
@@ -205,7 +213,7 @@ def find_previous_note() -> str:
     for filename in os.listdir(NOTES_PATH): # search parent directory
         if filename.endswith('.rtf') and 'SD' in filename:
             if debug_enabled:
-                print(f"[DEBUG]: Found {filename}")
+                print(f"{DEBUG_MSG_PREFIX}found {filename}")
             doc_exists = True
             break
         
@@ -229,11 +237,12 @@ def find_previous_note() -> str:
     if files:
         prev_note = max(files, key=natural_sort_key)
         if debug_enabled:
-            print(f"[DEBUG]: Previous note found -> {prev_note}.")
+            print(f"{DEBUG_MSG_PREFIX}Previous note found -> {prev_note}.")
         return prev_note
             
     # in case files are moved/deleted during runtime
     raise ValueError("No matching files found")    
+
 
 def retrieve_info_from_SD(filename: str) -> None:
     # retrieve information from prev_note that was found
@@ -283,7 +292,7 @@ def retrieve_info_from_SD(filename: str) -> None:
         ratings.update(pain_health_ratings) # add to ratings dict
         
         if debug_enabled:
-            print(f"[DEBUG]: rating_sentence -> {rating_sentence}")   
+            print(f"{DEBUG_MSG_PREFIX}rating_sentence -> {rating_sentence}")   
 
     else:
         raise ValueError("Failed to find ratings in note document, check syntax")
@@ -295,7 +304,7 @@ def retrieve_info_from_SD(filename: str) -> None:
     if title_match:
         title = title_match.group(1)
         if debug_enabled:
-            print(f"[DEBUG]: title -> {title}")
+            print(f"{DEBUG_MSG_PREFIX}title -> {title}")
     else:
         raise ValueError("Failed to find title in note document, check syntax")
     
@@ -308,15 +317,14 @@ def retrieve_info_from_SD(filename: str) -> None:
         r"Date\s+of\s+Birth:\s+(?P<dob>\d{1,2}/\d{1,2}/\d{4})" # match strictly the date format
     )    
     name_date_match = re.search(name_date_pattern, normalized, re.IGNORECASE)
-    
     if name_date_match:
         # extract data from groups
         name = name_date_match.group('name').strip()
         dob = name_date_match.group('dob').strip()
         
         if debug_enabled:
-            print(f"[DEBUG]: name -> {name}")
-            print(f"[DEBUG]: dob -> {dob}")
+            print(f"{DEBUG_MSG_PREFIX}name -> {name}")
+            print(f"{DEBUG_MSG_PREFIX}dob -> {dob}")
         
         name_parts = name.strip().split(" ")
         if len(name_parts) != 2:
@@ -341,19 +349,19 @@ def retrieve_info_from_SD(filename: str) -> None:
             address = street_address_match.group('address').strip()
             
             if debug_enabled:
-                print(f"[DEBUG]: street -> {street}")
-                print(f"[DEBUG]: address -> {address}")
+                print(f"{DEBUG_MSG_PREFIX}street -> {street}")
+                print(f"{DEBUG_MSG_PREFIX}address -> {address}")
         else:
             raise ValueError("Failed to find street or address in note document, check syntax")
         
         # create Patient obj and consolidate necessary information
         patient = Patient(first, last, title, street, address, Date(month, day, year), Ratings(ratings))
         if debug_enabled:
-            print(f"[DEBUG]: {patient.get_title()} {patient.get_full_name()}")
-            print(f"[DEBUG]: {patient.get_street()}")
-            print(f"[DEBUG]: {patient.get_address()}")
-            print(f"[DEBUG]: {patient.get_birthday().get_date_readable()}")
-            print(f"[DEBUG]: {patient.get_ratings()}")   
+            print(f"{DEBUG_MSG_PREFIX}{patient.get_title()} {patient.get_full_name()}")
+            print(f"{DEBUG_MSG_PREFIX}{patient.get_street()}")
+            print(f"{DEBUG_MSG_PREFIX}{patient.get_address()}")
+            print(f"{DEBUG_MSG_PREFIX}{patient.get_birthday().get_date_readable()}")
+            print(f"{DEBUG_MSG_PREFIX}{patient.get_ratings()}")   
     else:
         raise ValueError("Failed to extract patient data")     
     
@@ -363,39 +371,63 @@ def retrieve_info_from_SD(filename: str) -> None:
     lumbar_regions_matches = re.findall(r"\bL\d+", after_objective, re.IGNORECASE)
     
     if not cervical_regions_matches:
-        print("[INFO]: No cervical regions found, continuing...")
+        print(f"{INFO_MSG_PREFIX}No cervical regions found, continuing...")
     else:
         # remove duplicates and sort
         cervical_regions = list(dict.fromkeys(cervical_regions_matches))
         
     if not lumbar_regions_matches:
-        print("[INFO]: No lumbar regions found, continuing...")
+        print(f"{INFO_MSG_PREFIX}No lumbar regions found, continuing...")
     else:
         lumbar_regions = list(dict.fromkeys(lumbar_regions_matches)) 
     
     if debug_enabled:
-        print(f"[DEBUG]: cervical_regions -> {cervical_regions}")
-        print(f"[DEBUG]: lumbar_regions -> {lumbar_regions}")
+        print(f"{DEBUG_MSG_PREFIX}cervical_regions -> {cervical_regions}")
+        print(f"{DEBUG_MSG_PREFIX}lumbar_regions -> {lumbar_regions}")
         
     # find muscle tone sentences
     tone_targets = ["hypertonicity", "increased tonus", "muscle tone"]
-    tone_target_group = rf"\b({'|'.join(map(re.escape, tone_targets))})\b"
-    tone_matches = re.findall(rf"([^.]*?{tone_target_group}[^.]*\.)", normalized, re.IGNORECASE)
-    for sentences in tone_matches:
-        sentence = sentences[0]
-        muscle_tone_sentences.append(sentence)
+    find_sentences(tone_targets, muscle_tone_sentences, normalized, re.IGNORECASE)
         
     # find trigger point sentences
     trigger_targets = ["trigger points"]
-    trigger_target_group = rf"\b({'|'.join(map(re.escape, trigger_targets))})\b"
-    trigger_matches = re.findall(rf"([^.]*?{trigger_target_group}[^.]*\.)", normalized, re.IGNORECASE)
-    for sentences in trigger_matches:
-        sentence = sentences[0]
-        trigger_point_sentences.append(sentence)
+    find_sentences(trigger_targets, trigger_point_sentences, normalized, re.IGNORECASE)
+    
+    # find ROM sentences 
+    rom_targets = ["ROM", "range of motion", "ranges of motion"]
+    find_sentences(rom_targets, rom_sentences, normalized, re.DOTALL)
+    
+    
         
     if debug_enabled:
-        print(f"[DEBUG]: muscle tone sentences -> {muscle_tone_sentences}")
-        print(f"[DEBUG]: trigger point sentences -> {trigger_point_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}muscle tone sentences -> {muscle_tone_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}trigger point sentences -> {trigger_point_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}ROM sentences -> {rom_sentences}")
+        
+    
+def find_sentences(targets: list[str], destination: list[str], content: str, search_flag) -> bool:
+    group = rf"\b({'|'.join(map(re.escape, targets))})\b"
+        
+    # do search
+    matches = re.findall(rf"([^.]*?{group}[^.]*\.)", content, search_flag)
+    
+    # append matches to passed-in list
+    if matches:
+        for sentences in matches:
+            sentence = sentences[0]
+            destination.append(str(sentence).strip())
+        return True
+    
+    # no matches found
+    print(f"{INFO_MSG_PREFIX}no sentences found, continuing...")
+    return False
+
+
+def print_success_msg() -> None:
+    print("\n=============")
+    print("|  SUCCESS  |")
+    print("=============\n")
+
 
 def do_single_fill() -> None:
     # get patient info for note
@@ -404,17 +436,18 @@ def do_single_fill() -> None:
     retrieve_info_from_SD(find_previous_note())
     # retrieve_info_from_SD("SD_opened_with_word_alt.rtf")
     
-    print("\n=============")
-    print("|  SUCCESS  |")
-    print("=============\n")
+    print_success_msg()
+    
 
 # TODO
 def do_partial_fill() -> None:
     pass
 
+
 # TODO
 def do_full_fill() -> None:
     pass
+
         
 def main():
     ask_for_debug()
@@ -433,7 +466,7 @@ def main():
                 do_full_fill()
             
     except ValueError as e:
-        print(f"[ERROR]: {e}. Please try again.\n")
+        print(f"{ERROR_MSG_PREFIX}{e}. Please try again.\n")
     
 if __name__ == "__main__":
     main()
