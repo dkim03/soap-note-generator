@@ -31,14 +31,21 @@ LIMITATIONS:
       final exam.
 
 DEPENDENCIES:
+    - collections
     - enum
+    - os    
     - re
-    - os
+    - simplertf
+    - striprtf
     - Date
     - Patient
+    - Ratings
 """
 
 import os, re
+from simplertf import simplertf
+
+from collections import deque
 from enum import Enum
 from striprtf.striprtf import rtf_to_text
 
@@ -46,6 +53,9 @@ from striprtf.striprtf import rtf_to_text
 from Date import Date
 from Patient import Patient
 from Ratings import Ratings
+
+r = simplertf.RTF("Test Generation")
+r.stylesheet = "English"
 
 class Operations(Enum):
     SINGLE_FILL = 1
@@ -63,16 +73,16 @@ debug_enabled = False # used to enable/disable debug prints msgs
 patient = None # Patient obj to store all demographic info
 
 # spinous regions related to tenderness
-cervical_regions = []
-thoracic_regions = []
-lumbar_regions = []
+tender_cervical_regions = []
+tender_thoracic_regions = []
+tender_lumbar_regions = []
 
 # various sentences to help reconstruct the new note document
 muscle_tone_sentences = []
 trigger_point_sentences = []
 rom_sentences = []
 test_pain_sentences = []
-tenderness_region_sentences = []
+lumbar_tenderness_sentences = []
 
 # ------------------------------------------------------------------------------------------------------------------------
 #                                             AutoSOAP EXECUTION FLOW outline
@@ -192,7 +202,11 @@ def ask_for_debug() -> None:
 
         except ValueError as e:
             print(f"{ERROR_MSG_PREFIX}{e}. Please try again.\n")    
-
+            
+            
+def get_single_date_prompt() -> Date:
+    while True:
+        user_input = input("")
 
 def select_function_prompt() -> int:
     # 1 -> single
@@ -255,7 +269,7 @@ def find_previous_note() -> str:
 
 def retrieve_info_from_SD(filename: str) -> None:
     # retrieve information from prev_note that was found
-    global patient, cervical_regions, lumbar_regions
+    global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, lumbar_tenderness_sentences
 
     # read the file
     with open(f"{NOTES_PATH}{filename}", 'r', encoding='cp1252') as f:
@@ -381,27 +395,28 @@ def retrieve_info_from_SD(filename: str) -> None:
     # those sentences are always related to tenderness/palpation (afaik)
     
     tenderness_targets = ["spinous process", "spinous levels", "following levels"]
+    tenderness_region_sentences = []
     find_sentences(tenderness_targets, tenderness_region_sentences, normalized, re.IGNORECASE)
     
     for sentence in tenderness_region_sentences:
         # for every sentence found, scan for these patterns within them, then add to list  if found
-        cervical_regions.extend(re.findall(r"\bC\d+", sentence, re.IGNORECASE))
-        thoracic_regions.extend(re.findall(r"\bT\d+", sentence, re.IGNORECASE))
-        lumbar_regions.extend(re.findall(r"\bL\d+", sentence, re.IGNORECASE))
+        tender_cervical_regions.extend(re.findall(r"\bC\d+", sentence, re.IGNORECASE))
+        tender_thoracic_regions.extend(re.findall(r"\bT\d+", sentence, re.IGNORECASE))
+        tender_lumbar_regions.extend(re.findall(r"\bL\d+", sentence, re.IGNORECASE))
     
-    if not cervical_regions:
+    if not tender_cervical_regions:
         print(f"{INFO_MSG_PREFIX}No cervical regions found, continuing...")
         
-    if not thoracic_regions:
+    if not tender_thoracic_regions:
         print(f"{INFO_MSG_PREFIX}No thoracic regions found, continuing...")    
         
-    if not lumbar_regions:
+    if not tender_lumbar_regions:
         print(f"{INFO_MSG_PREFIX}No lumbar regions found, continuing...")
     
     if debug_enabled:
-        print(f"{DEBUG_MSG_PREFIX}cervical_regions -> {cervical_regions}")
-        print(f"{DEBUG_MSG_PREFIX}thoracic_regions -> {thoracic_regions}")
-        print(f"{DEBUG_MSG_PREFIX}lumbar_regions -> {lumbar_regions}")
+        print(f"{DEBUG_MSG_PREFIX}tender_cervical_regions -> {tender_cervical_regions}")
+        print(f"{DEBUG_MSG_PREFIX}tender_thoracic_regions -> {tender_thoracic_regions}")
+        print(f"{DEBUG_MSG_PREFIX}tender_lumbar_regions -> {tender_lumbar_regions}")
         
     # find muscle tone sentences
     tone_targets = ["hypertonicity", "increased tonus", "muscle tone"]
@@ -418,14 +433,22 @@ def retrieve_info_from_SD(filename: str) -> None:
     # find test pain sentences
     test_pain_targets = ["experienced discomfort", "experienced pain",
                          "complained", "reported pain", "pain was elicited",
-                         "there is pain", "there was pain", "increased pain"]
+                         "there is pain", "there was pain", "increased pain",
+                         "felt discomfort"]
     find_sentences(test_pain_targets, test_pain_sentences, normalized, re.IGNORECASE)
+    
+    lumbar_tenderness_targets = ["there is tenderness in", "there is tenderness upon",
+                                 "tenderness is notable", "reveals tenderness",
+                                 "tenderness is present", "pain in the lumbar",
+                                 "reveals tender areas"]
+    find_sentences(lumbar_tenderness_targets, lumbar_tenderness_sentences, normalized, re.IGNORECASE)
         
     if debug_enabled:
         print(f"{DEBUG_MSG_PREFIX}muscle tone sentences -> {muscle_tone_sentences}")
         print(f"{DEBUG_MSG_PREFIX}trigger point sentences -> {trigger_point_sentences}")
         print(f"{DEBUG_MSG_PREFIX}ROM sentences -> {rom_sentences}")
         print(f"{DEBUG_MSG_PREFIX}test pain sentences -> {test_pain_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}lumbar tenderness sentences -> {lumbar_tenderness_sentences}")
         
     
 def find_sentences(targets: list[str], destination: list[str], content: str, search_flag) -> bool:
@@ -449,16 +472,75 @@ def print_success_msg() -> None:
     print("\n=============")
     print("|  SUCCESS  |")
     print("=============\n")
+    
+    
+def generate_subjective_section() -> None:
+    if not patient:
+        raise ValueError("Patient is None")
+    
+    
+def add_header_section() -> None:
+    if not patient:
+        raise ValueError("Patient is None")
+    
+    # do initial page set up
+    r.set_layout(ph="11in", pw="8.5in", mt="1in", mb="1in", ml="1in", mr="1in")
+    
+    # add page content
+    r.par("Back to Wellness", style="s26")
+    r.par("4629 168th St SW Ste B", style="s26")
+    r.par("Lynnwood, WA 98037", style="s26")
+    r.par("425-741-0600", style="s26")
+    r.par("Doctor: Sungjun Jung", style="s26")
+    r.par("") # add a space
+    
+    # add patient info
+    r.par(f"{patient.get_full_name()}", style="s27")
+    r.par(f"{patient.get_street()}", style="s27")
+    r.par(f"{patient.get_address()}", style="s27")
+    r.par(f"Date of Birth: {patient.get_birthday().get_date_standard()}", style="s27")
+
+    # add title
+    r.par("AutoSOAP Notes", style="s25") # title
+    
+    # r.create("test")
 
 
 def do_single_fill() -> None:
     # get patient info from notes
     print(f"Retieving patient info...")
-    retrieve_info_from_SD(find_previous_note())
+    filename = find_previous_note()
+    retrieve_info_from_SD(filename)
     # retrieve_info_from_SD("SD_opened_with_word.rtf")
     # retrieve_info_from_SD("SD_opened_with_word_alt.rtf")
     
+    
+    
+    # split note generation into 4 sections:
+    # - page setup & document header        X
+    # - SUBJECTIVE                          *
+    # - OBJECTIVE                           -
+    # - ASSESSMENT                          -
+    # - PLAN                                -
+    add_header_section()
+    # generate_subjective_section()
+    
     print_success_msg()
+    
+    
+# example usage:
+# r = simplertf.RTF("My Document Title")
+# r.author = "Myself"
+# r.set_layout("A4")
+# r.par("This text starts a paragraph.")
+# r.text(" This text continues the paragraph, note the space before 'This'.")
+# r.note("The text of a footnote.", anchor="*")
+# r.par("A new paragraph begins. Former note and paragraph are automatically closed.")
+# r.note("This is the text of the second footnote.")
+# r.text(" I'm adding text to the second footnote.")
+# r.close_note()
+# r.text(" Now I'm adding text to the second paragraph. I had to close the note manually.")
+# r.create("File name")
     
 
 # TODO
