@@ -53,17 +53,26 @@ class Operations(Enum):
     FULL_FILL = 3
     
 NOTES_PATH = '../' # directory to check for existing soap notes
+
+# prefixes to denote different terminal msgs
 ERROR_MSG_PREFIX = "[ERROR]: "
 DEBUG_MSG_PREFIX = "[DEBUG]: "
 INFO_MSG_PREFIX = "[INFO]: "
     
-debug_enabled = False # used to enable/disable debug prints
-patient = None
+debug_enabled = False # used to enable/disable debug prints msgs
+patient = None # Patient obj to store all demographic info
+
+# spinous regions related to tenderness
 cervical_regions = []
+thoracic_regions = []
 lumbar_regions = []
+
+# various sentences to help reconstruct the new note document
 muscle_tone_sentences = []
 trigger_point_sentences = []
 rom_sentences = []
+test_pain_sentences = []
+tenderness_region_sentences = []
 
 # ------------------------------------------------------------------------------------------------------------------------
 #                                             AutoSOAP EXECUTION FLOW outline
@@ -308,7 +317,7 @@ def retrieve_info_from_SD(filename: str) -> None:
     else:
         raise ValueError("Failed to find title in note document, check syntax")
     
-    # find patient info
+    # find patient info and store in Patient obj
     name_date_pattern = (
         r"Doctor:\s*Sungjun\s*Jung\s+"                         # anchor
         r"(?P<name>.*?)\s+"                                    # match name until we see numbers
@@ -334,6 +343,7 @@ def retrieve_info_from_SD(filename: str) -> None:
         date_parts = dob.strip().split("/")
         month, day, year = map(int, date_parts)
         
+        # find street and address
         street_address_pattern = (
             rf"{last}\s*\\par\s*"          # start after the last name
             r"(?P<street>[^\\]+?)\s*\\par\s*"      # match street until the next \par
@@ -366,23 +376,31 @@ def retrieve_info_from_SD(filename: str) -> None:
         raise ValueError("Failed to extract patient data")     
     
     # find regions in regards to tenderness/palpation
-    after_objective = normalized.split("Objective", 1)[-1] # get all words after 'Objective'
-    cervical_regions_matches = re.findall(r"\bC\d+", after_objective, re.IGNORECASE)
-    lumbar_regions_matches = re.findall(r"\bL\d+", after_objective, re.IGNORECASE)
+    # problem with this is that it gets ALL cervical regions, this is not correct
+    # one way to do this is to get all sentences that mention a spinous process then scan for C#, T#, or L# since
+    # those sentences are always related to tenderness/palpation (afaik)
     
-    if not cervical_regions_matches:
+    tenderness_targets = ["spinous process", "spinous levels", "following levels"]
+    find_sentences(tenderness_targets, tenderness_region_sentences, normalized, re.IGNORECASE)
+    
+    for sentence in tenderness_region_sentences:
+        # for every sentence found, scan for these patterns within them, then add to list  if found
+        cervical_regions.extend(re.findall(r"\bC\d+", sentence, re.IGNORECASE))
+        thoracic_regions.extend(re.findall(r"\bT\d+", sentence, re.IGNORECASE))
+        lumbar_regions.extend(re.findall(r"\bL\d+", sentence, re.IGNORECASE))
+    
+    if not cervical_regions:
         print(f"{INFO_MSG_PREFIX}No cervical regions found, continuing...")
-    else:
-        # remove duplicates and sort
-        cervical_regions = list(dict.fromkeys(cervical_regions_matches))
         
-    if not lumbar_regions_matches:
+    if not thoracic_regions:
+        print(f"{INFO_MSG_PREFIX}No thoracic regions found, continuing...")    
+        
+    if not lumbar_regions:
         print(f"{INFO_MSG_PREFIX}No lumbar regions found, continuing...")
-    else:
-        lumbar_regions = list(dict.fromkeys(lumbar_regions_matches)) 
     
     if debug_enabled:
         print(f"{DEBUG_MSG_PREFIX}cervical_regions -> {cervical_regions}")
+        print(f"{DEBUG_MSG_PREFIX}thoracic_regions -> {thoracic_regions}")
         print(f"{DEBUG_MSG_PREFIX}lumbar_regions -> {lumbar_regions}")
         
     # find muscle tone sentences
@@ -397,21 +415,25 @@ def retrieve_info_from_SD(filename: str) -> None:
     rom_targets = ["ROM", "range of motion", "ranges of motion"]
     find_sentences(rom_targets, rom_sentences, normalized, re.DOTALL)
     
-    
+    # find test pain sentences
+    test_pain_targets = ["experienced discomfort", "experienced pain",
+                         "complained", "reported pain", "pain was elicited",
+                         "there is pain", "there was pain", "increased pain"]
+    find_sentences(test_pain_targets, test_pain_sentences, normalized, re.IGNORECASE)
         
     if debug_enabled:
         print(f"{DEBUG_MSG_PREFIX}muscle tone sentences -> {muscle_tone_sentences}")
         print(f"{DEBUG_MSG_PREFIX}trigger point sentences -> {trigger_point_sentences}")
         print(f"{DEBUG_MSG_PREFIX}ROM sentences -> {rom_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}test pain sentences -> {test_pain_sentences}")
         
     
 def find_sentences(targets: list[str], destination: list[str], content: str, search_flag) -> bool:
+    # do search of target strings
     group = rf"\b({'|'.join(map(re.escape, targets))})\b"
-        
-    # do search
     matches = re.findall(rf"([^.]*?{group}[^.]*\.)", content, search_flag)
     
-    # append matches to passed-in list
+    # clean then append matches to passed-in list
     if matches:
         for sentences in matches:
             sentence = sentences[0]
@@ -430,10 +452,10 @@ def print_success_msg() -> None:
 
 
 def do_single_fill() -> None:
-    # get patient info for note
+    # get patient info from notes
     print(f"Retieving patient info...")
-    
     retrieve_info_from_SD(find_previous_note())
+    # retrieve_info_from_SD("SD_opened_with_word.rtf")
     # retrieve_info_from_SD("SD_opened_with_word_alt.rtf")
     
     print_success_msg()
