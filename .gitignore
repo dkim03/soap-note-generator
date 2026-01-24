@@ -1,3 +1,5 @@
+*.rtf
+
 # Exclude VS Code JSON settings file
 .vscode
 

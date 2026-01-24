@@ -7,7 +7,7 @@ DESC:
 
 Author: David J. Kim,
 Created: 01-16-2026,
-Modified: 01-22-2026,
+Modified: 01-23-2026,
 Version: 1.0.0
 
 USAGE:
@@ -43,14 +43,17 @@ DEPENDENCIES:
 """
 
 import os, re
+import tkinter as tk
 from simplertf import simplertf
 
-from collections import deque
+from datetime import date
 from enum import Enum
 from striprtf.striprtf import rtf_to_text
+from tkcalendar import Calendar
 
 # custom classes
 from Date import Date
+from Note import Note
 from Patient import Patient
 from Ratings import Ratings
 
@@ -61,6 +64,11 @@ class Operations(Enum):
     SINGLE_FILL = 1
     PARTIAL_FILL = 2
     FULL_FILL = 3
+    
+class Sections(Enum):
+    SUBJECTIVE = 0
+    OBJECTIVE = 1
+    ASSESSMENT = 2
     
 NOTES_PATH = '../' # directory to check for existing soap notes
 
@@ -164,10 +172,10 @@ lumbar_tenderness_sentences = []
 
 # PROJECT PROGRESS ('X' -> done, '*' -> WIP, '-' -> not started, '|' -> blocked)
 #   SINGLE FILL                                 *
-#   > date retrieval                                *
+#   > date retrieval                                X
 #   > SOAP note patient info retrieval              X
-#   > ratings, etc. retrieval                       *
-#   > note generation algo                          -
+#   > ratings, etc. retrieval                       X
+#   > note generation algo                          *
 #   PARTIAL FILL                                -
 #   FULL FILL                                   -
 #   Tkinter GUI integration                     -
@@ -474,12 +482,37 @@ def print_success_msg() -> None:
     print("=============\n")
     
     
-def generate_subjective_section() -> None:
-    if not patient:
-        raise ValueError("Patient is None")
+def get_date_from_calendar() -> date | None:
+    selected_date: date | None = None
+
+    root = tk.Tk()
+    root.withdraw()
+
+    win = tk.Toplevel(root)
+    win.title("Select a date")
+
+    cal = Calendar(
+        win,
+        selectmode="day",
+        date_pattern="mm/dd/yyyy"
+    )
+    cal.pack(padx=10, pady=10)
+
+    def ok():
+        nonlocal selected_date
+        selected_date = cal.selection_get()
+        win.destroy()
+        root.destroy()
+
+    tk.Button(win, text="OK", command=ok).pack(pady=5)
+
+    win.grab_set()
+    win.wait_window()
+
+    return selected_date
     
     
-def add_header_section() -> None:
+def add_header_section(date: Date) -> None:
     if not patient:
         raise ValueError("Patient is None")
     
@@ -502,8 +535,29 @@ def add_header_section() -> None:
 
     # add title
     r.par("AutoSOAP Notes", style="s25") # title
+
+    # add date
+    r.par(f"{date.get_date_standard()}", style="s28")
+
+
+def generate_content() -> None:
+    global patient
+    if not patient:
+        raise ValueError("Patient is None")
     
-    # r.create("test")
+    note = Note(patient)
+    
+    # add sections
+    r.par(f"Subjective Complaint", style="s28")
+    r.par(note.get_paragraph(Sections.SUBJECTIVE.value), style="s21")
+    r.par("")
+    r.par(f"Objective", style="s28")
+    r.par(note.get_paragraph(Sections.OBJECTIVE.value), style="s21")
+    r.par("")
+    r.par(f"Assessment", style="s28")
+    r.par(note.get_paragraph(Sections.ASSESSMENT.value), style="s21")
+    r.par("")
+    r.par(f"Plan", style="s28")
 
 
 def do_single_fill() -> None:
@@ -514,33 +568,24 @@ def do_single_fill() -> None:
     # retrieve_info_from_SD("SD_opened_with_word.rtf")
     # retrieve_info_from_SD("SD_opened_with_word_alt.rtf")
     
-    
+    # ask for a date
+    date = get_date_from_calendar()
+    temp = None
+    if date:
+        temp = Date(date.month, date.day, date.year)
+    else:
+        raise ValueError("Recieved date is None")
     
     # split note generation into 4 sections:
     # - page setup & document header        X
     # - SUBJECTIVE                          *
     # - OBJECTIVE                           -
     # - ASSESSMENT                          -
-    # - PLAN                                -
-    add_header_section()
-    # generate_subjective_section()
-    
+    # - PLAN & TREATMENT                    -
+    add_header_section(temp)
+    generate_content()
+    r.create("test")
     print_success_msg()
-    
-    
-# example usage:
-# r = simplertf.RTF("My Document Title")
-# r.author = "Myself"
-# r.set_layout("A4")
-# r.par("This text starts a paragraph.")
-# r.text(" This text continues the paragraph, note the space before 'This'.")
-# r.note("The text of a footnote.", anchor="*")
-# r.par("A new paragraph begins. Former note and paragraph are automatically closed.")
-# r.note("This is the text of the second footnote.")
-# r.text(" I'm adding text to the second footnote.")
-# r.close_note()
-# r.text(" Now I'm adding text to the second paragraph. I had to close the note manually.")
-# r.create("File name")
     
 
 # TODO
