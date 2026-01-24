@@ -24,19 +24,26 @@ DEPENDENCIES:
 """
 
 import random
+import re
 from enum import Enum
 from Patient import Patient
+
+RATING_CEILING = 10
 
 class Sections(Enum):
     SUBJECTIVE = 0
     OBJECTIVE = 1
     ASSESSMENT = 2
+    
+target_ratings = None
 
 class Note:
     def __init__(self, patient: Patient):
-        self.patient = patient    
+        global target_ratings
+        self.patient = patient
+        target_ratings = self.get_target_ratings() # get the target rating for this note obj
         
-        # SUBJECTIVE
+        # SUBJECTIVE sentence bank
         # 1st sentence
         self.subjective_intro = [
             f"{self.patient.get_formal_name()} was evaluated today to determine progress and response to the current treatment plan.",
@@ -64,7 +71,6 @@ class Note:
             " Overall pain level today on a scale of 0 (no pain) to 10 (excruciating pain) is considered a ",
             " Current pain level today on a scale of 0 (no pain) to 10 (unbearable pain) is considered a ",
             f" {self.patient.get_pronoun_possessive()} pain level today on a scale of 0 (no pain) to 10 (unbearable pain) is reported to be ",
-            f" The patient rated {self.patient.get_pronoun_possessive()} overall pain level today on a scale of 0 (no pain) to 10 (excruciating pain). The patient said {self.patient.get_pronoun_possessive()} pain level can be considered a ",
             f" General pain level today, on a scale of 0 (no pain) to 10 (unbearable pain), is evaluated as "
         ]
         
@@ -72,20 +78,36 @@ class Note:
         self.subjective_health = [
             f" The patient rated {self.patient.get_pronoun_possessive()} overall health on a scale of 1 to 10 as a ",
             f" The patient reported that {self.patient.get_pronoun_possessive()} overall health on a scale of 1 to 10 is rated as a ",
-            " The patient's general health was rated on a scale of 1 to 10 is as ",
+            " The patient's general health was rated on a scale of 1 to 10; it was rated as a ",
             " Overall health on a scale of 1 to 10 is rated as ",
             " Current health on a scale of 1 to 10 is rated a "
         ]
         
         # optional sentence(s)
         # - improving, unchanging, worsening complaints (this depends on generated ratings)
+        self.subjective_assessment_improving = [
+            f" The patient disclosed {self.patient.get_pronoun()} is feeling improvements in {self.patient.get_pronoun_possessive()} ",
+            f" The patient reported that {self.patient.get_pronoun()} felt improvements in {self.patient.get_pronoun_possessive()} ",
+            f" Today, the patient says there are improvements in {self.patient.get_pronoun_possessive()} "
+        ]
+        
+        self.subjective_assessment_unchanged = [
+            " The patient reported that the following complaints have not changed since the last visit: ",
+            " Today, there is no change in the patient's ",
+            f" During today's visit, the patient reported no change in {self.patient.get_pronoun_possessive()} "
+        ]
+        
+        self.subjective_assessment_worsening = [
+            " The patient's complaints have become worse since the last visit; notably, in their ",
+            " Today, the following complaints have become worse since the last visit: "
+        ]
         
         # 5th sentence
         self.subjective_ratings = [
             f" On a scale of 0 to 10 with 10 being the worst, {self.patient.get_pronoun()} rated {self.patient.get_pronoun_possessive()} "
         ]
         
-        # OBJECTIVE
+        # OBJECTIVE sentence bank
         # 1st sentence
         self.objective_tender_cervical = [
             "Palpation of the cervical spine displayed tenderness in the spinous process at: ",
@@ -197,7 +219,7 @@ class Note:
             " Pain was elicited while performing this test."
         ]
         
-        # ASSESSMENT
+        # ASSESSMENT sentence bank
         # 1st sentence
         # if patient status got worse, prompt user to give a reason (else give vague, generated reasoning)
         self.assessment_status = [
@@ -210,39 +232,202 @@ class Note:
         
         # 2nd sentence
         # - improving, unchanging, worsening complaints (this depends on generated ratings)
+
+    def _get_guaranteed_staircase_path(self, start, target, total_runs) -> list[int]:
+        path = [start]
+        current_val = start
+        
+        for i in range(1, total_runs + 1):
+            # on last step, force the target to guarantee the hit
+            if i == total_runs:
+                path.append(target)
+                break
+                
+            # calculate the 'Ideal' next step to stay on track
+            remaining_runs = total_runs - i
+            distance_to_go = target - current_val
+            ideal_step = distance_to_go / remaining_runs
+            
+            # configure chance
+            up_chance = 0.1
+            down_chance = 0.9 * (0.90 ** i) # adaptive down chance
+            
+            noise = 0
+            if random.random() < up_chance:
+                noise = random.randint(0, 3)
+            elif target < current_val and random.random() < down_chance:
+                noise = -random.randint(0, 1)
+                
+            # move toward target + noise
+            current_val = round(min(max(int(current_val + noise + round(ideal_step * 0.75)), target), RATING_CEILING))
+            path.append(current_val)
+            
+        return path
+
+    # current_val = 8    # Starting point
+    # target_val = 3     # The goal we want to trend toward
+    # steps = 20          # Number of iterations
+
+    # # target should ALWAYS be less than the current val (overall downwards trend is goal)
+    # # only used for partial and full fill options
+    # self._get_guaranteed_staircase_path(current_val, target_val, steps)
+        
+    # def _generate_ratings(self) -> dict[str, int]:
+    #     # use a random function to generate believable ratings for each complaint
+    #     # - we read the previous rating then use that as a starting point for random deviations
+    #     # - target is guaranteed to be reached by the end of the last run
+    #     # - overall health + pain will be measured based on no. complaints + severity of each complaint
+        
+    #     # for each complaint, generate a rating given start and end values
+        
+    #     return
+    
+    def _get_complaint_list(self) -> str:
+        global target_ratings
+        counter = 1    
+        complaint_sentence = ""
+        
+        # check null
+        if not target_ratings:
+            raise ValueError("Target ratings is None")
+        
+        for complaint, rating in target_ratings.items():
+            if complaint != "pain" and complaint != "health":
+                complaint_sentence += f"{complaint} as a {rating}"
+                
+                # add comma, period or 'and' at the end
+                if counter < len(target_ratings) - 3:
+                    complaint_sentence += ", "
+                elif counter == len(target_ratings) - 3:
+                    complaint_sentence += " and "
+                elif counter == len(target_ratings) - 2:
+                    complaint_sentence += "."
+                
+                counter+=1
+                
+        return complaint_sentence
+
+
+    def _convert_list_to_plain(self, input_list: list) -> str:
+        sentence = ""
+        counter = 1    
+        
+        # check null
+        if not input_list:
+            raise ValueError("input_list is None")
+        
+        for element in input_list:
+            sentence += f"{element}"
+            
+            # add comma, period or 'and' at the end
+            if counter < len(input_list) - 1:
+                sentence += ", "
+            elif counter == len(input_list) - 1:
+                sentence += " and "
+            elif counter == len(input_list):
+                sentence += "."
+            
+            counter+=1
+                
+        return sentence        
         
     
+    def get_target_ratings(self) -> dict[str, int]:
+        getting_input = True
+        ratings_copy = self.patient.get_ratings().copy()
+        total_pain = 0
+        for complaint, rating in ratings_copy.items():
+            getting_input = True
+            if complaint != "pain" and complaint != "health":
+                while getting_input:
+                    user_input = input(f"Please enter a target rating for {complaint}, starting at {rating}: ")
+                    if not re.fullmatch(r'[0-9]', user_input):
+                        print("Invalid input, please enter a number in the range 0-9. Try again.")
+                    else:
+                        ratings_copy[complaint] = int(user_input)
+                        
+                        # higher pain ratings contribute more to the overall pain value
+                        # can tweak this so that age/gender affects perceived pain values
+                        bonus_pain_value = 0
+                        if int(user_input) > 4 and len(ratings_copy) > 4:
+                            bonus_pain_value += (len(ratings_copy)-4)
+                        
+                        total_pain += int(user_input) + bonus_pain_value # add up pain
+                        getting_input = False
+                
+        # calculate pain and health and
+        avg_pain = min(round(total_pain / (len(ratings_copy)-2)) + random.randint(0, 1), 10)
+        health = max((RATING_CEILING - avg_pain) + random.randint(-1, 1), 0)
+        
+        ratings_copy["pain"] = avg_pain
+        ratings_copy["health"] = health
+        
+        return ratings_copy
+    
+    
     def get_paragraph(self, section: int) -> str:
+        global target_ratings
+        
+        # check for null
+        if not target_ratings:
+            raise ValueError("target_ratings is None")
+        
         paragraph = ""
-        if section is Sections.SUBJECTIVE.value:
-            # return subjective paragraph
-            # # add section header
-            # r.par(f"Subjective Complaint", style="s28")
-            # r.par(f"This is the first sentence.", style="s21")
-            
+        if section == Sections.SUBJECTIVE.value:
             # append intro sentences
             paragraph += self.subjective_intro[random.randint(0, len(self.subjective_intro)-1)]
             paragraph += self.subjective_pain_intro[random.randint(0, len(self.subjective_pain_intro)-1)]
             
             # append overall pain rating from patient
             paragraph += self.subjective_overall_pain[random.randint(0, len(self.subjective_overall_pain)-1)]
-            paragraph += f"{self.patient.ratings.get_ratings()['pain']}."
+            paragraph += f"{target_ratings['pain']}."
             
             # append health rating from patient
             paragraph += self.subjective_health[random.randint(0, len(self.subjective_health)-1)]
-            paragraph += f"{self.patient.ratings.get_ratings()['health']}."
+            paragraph += f"{target_ratings['health']}."
             
-            # add improving, unchanging, worsening complaint sentence(s) here...
+            # add improving, unchanged, worsening complaint sentence(s)
+            # make lists to sort complaints based on whether it is improving/unchanged/worsening
+            # compare starting and target ratings
+            # - if difference is negative (starting < target), it is worsening
+            # - if difference is equal (starting == target), it is unchanged
+            # - if difference is positive (starting > target), it is improving
+            improving_complaints = []
+            unchanged_complaints = []
+            worsening_complaints = []
+            for complaint, start_rating in self.patient.get_ratings().items():
+                if complaint != "pain" and complaint != "health": 
+                    target_rating = target_ratings[complaint] # get target rating
+                    
+                    # compare and sort
+                    if start_rating > target_rating:
+                        improving_complaints.append(complaint)
+                    elif start_rating == target_rating:
+                        unchanged_complaints.append(complaint)
+                    else:
+                        worsening_complaints.append(complaint)
+        
+            if improving_complaints:
+                paragraph += self.subjective_assessment_improving[random.randint(0, len(self.subjective_assessment_improving)-1)]
+                paragraph += self._convert_list_to_plain(improving_complaints)            
+            
+            if unchanged_complaints:
+                paragraph += self.subjective_assessment_unchanged[random.randint(0, len(self.subjective_assessment_unchanged)-1)]
+                paragraph += self._convert_list_to_plain(unchanged_complaints)            
+            
+            if worsening_complaints:
+                paragraph += self.subjective_assessment_worsening[random.randint(0, len(self.subjective_assessment_worsening)-1)]
+                paragraph += self._convert_list_to_plain(worsening_complaints)
             
             # append ratings from patient
             paragraph += self.subjective_ratings[random.randint(0, len(self.subjective_ratings)-1)]
+            paragraph += self._get_complaint_list()
             
             return paragraph
-        elif section is Sections.OBJECTIVE.value:
-            # return objective paragraph
-            return ""
-        elif section is Sections.ASSESSMENT.value:
-            # return assessment paragraph
-            return ""
+        
+        elif section == Sections.OBJECTIVE.value:
+            return paragraph
+        elif section == Sections.ASSESSMENT.value:
+            return paragraph
         
         raise ValueError(f"'{section}' is not a valid section id")

@@ -525,7 +525,6 @@ def add_header_section(date: Date) -> None:
     r.par("Lynnwood, WA 98037", style="s26")
     r.par("425-741-0600", style="s26")
     r.par("Doctor: Sungjun Jung", style="s26")
-    r.par("") # add a space
     
     # add patient info
     r.par(f"{patient.get_full_name()}", style="s27")
@@ -546,17 +545,14 @@ def generate_content() -> None:
         raise ValueError("Patient is None")
     
     note = Note(patient)
-    
+
     # add sections
     r.par(f"Subjective Complaint", style="s28")
     r.par(note.get_paragraph(Sections.SUBJECTIVE.value), style="s21")
-    r.par("")
     r.par(f"Objective", style="s28")
     r.par(note.get_paragraph(Sections.OBJECTIVE.value), style="s21")
-    r.par("")
     r.par(f"Assessment", style="s28")
     r.par(note.get_paragraph(Sections.ASSESSMENT.value), style="s21")
-    r.par("")
     r.par(f"Plan", style="s28")
 
 
@@ -578,13 +574,13 @@ def do_single_fill() -> None:
     
     # split note generation into 4 sections:
     # - page setup & document header        X
-    # - SUBJECTIVE                          *
-    # - OBJECTIVE                           -
+    # - SUBJECTIVE                          X
+    # - OBJECTIVE                           *
     # - ASSESSMENT                          -
     # - PLAN & TREATMENT                    -
     add_header_section(temp)
     generate_content()
-    r.create("test")
+    r.create("test") # output .rtf file
     print_success_msg()
     
 
