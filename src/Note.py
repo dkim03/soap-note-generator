@@ -36,12 +36,18 @@ class Sections(Enum):
     ASSESSMENT = 2
     
 target_ratings = None
+overall_assessment = ""
+improving_complaints = []
+unchanged_complaints = []
+worsening_complaints = []
 
 class Note:
-    def __init__(self, patient: Patient):
-        global target_ratings
+    def __init__(self, patient: Patient, sorted_sentences: dict[str, list]):
+        global target_ratings, overall_assessment
         self.patient = patient
         target_ratings = self.get_target_ratings() # get the target rating for this note obj
+        
+        self.sorted_sentences = sorted_sentences
         
         # SUBJECTIVE sentence bank
         # 1st sentence
@@ -108,7 +114,6 @@ class Note:
         ]
         
         # OBJECTIVE sentence bank
-        # 1st sentence
         self.objective_tender_cervical = [
             "Palpation of the cervical spine displayed tenderness in the spinous process at: ",
             "Palpation of the cervical spine revealed tenderness at the following levels: ",
@@ -120,7 +125,6 @@ class Note:
             "Cervical spine palpation elicited tenderness of spinous process at "
         ]
         
-        # 2nd sentence
         self.objective_tone_cervical = [
             " Palpation of the cervical musculature demonstrates hypertonicity in the ",
             " Examination of the cervical spine region indicates the presence of increased tonus in the ",
@@ -131,7 +135,6 @@ class Note:
             " Cervical spine palpation reveals increased muscle tone of the "
         ]
         
-        # 3rd sentence
         self.objective_trigger_cervical = [
             " Palpatory examination of the cervical musculature displays myofascial trigger points of the ",
             " Palpation of the cervical musculature reveals myofascial trigger points of the ",
@@ -141,28 +144,56 @@ class Note:
             " Myofascial trigger points are present in the "
         ]
         
-        # 4th sentence
         self.objective_rom_cervical = [
-            " Examination of the cervical spine revealed the ROM has ",
-            " Cervical spine evaluation shows that the range of motion has ",
-            " Cervical spine evaluation shows that the ROM has ",
-            " Ranges of motion in the cervical region have ",
-            " Cervical range of motion has ",
-            " Cervical spine ROM has "
+            " Examination of the cervical spine revealed the ROM has decreased.",
+            " Cervical spine evaluation shows that the range of motion has decreased.",
+            " Cervical spine evaluation shows that the ROM has deteriorated.",
+            " Ranges of motion in the cervical region have lowered.",
+            " Cervical range of motion has decreased.",
+            " Cervical spine ROM has worsened."
         ]
         
-        # optional sentence
-        # test pain
-        self.objective_cervical_test_pain = [
-            " The patient complained of pain during testing.",
-            " The patient reported pain during the performance of this test.",
-            " The patient experienced pain during the execution of this test.",
-            " The patient indicated that they felt discomfort and pain during the performance of this exam.",
-            " The patient experienced discomfort during the execution of this test.",
-            " Pain was elicited while performing this test."
+        self.objective_tender_thoracic = [
+            " Palpation of the thoracic spine displayed tenderness in the spinous process at: ",
+            " Palpation of the thoracic spine revealed tenderness at the following levels: ",
+            " Examination of the thoracic region indicated discomfort and pain in the spinous process at: ",
+            " Evaluation of the thoracic spinal areas showed discomfort to be present in the spinous process at: ",
+            " Examination of the thoracic region indicated discomfort and pain in the spinous process at: ",
+            " There is tenderness of the following thoracic spinous levels: ",
+            " Thoracic spine tenderness was noted in the spinous process region at: ",
+            " Thoracic spine palpation elicited tenderness of spinous process at "
         ]
         
-        # 5th sentence
+        self.objective_tone_thoracic = [
+            " Palpation of the thoracic musculature demonstrates hypertonicity in the ",
+            " Examination of the thoracic spine region indicates the presence of increased tonus in the ",
+            " Evaluation of the thoracic spinal area shows hypertonicity in the ",
+            " There is hypertonicity of the thoracic spinal area in the ",
+            " Hypertonicity of the thoracic spine is palpable in the ",
+            " Hypertonicity is palpable in the ",
+            " Hypertonicity is found in the ",
+            " Thoracic spine palpation reveals increased muscle tone of the "        
+        ]
+        
+        self.objective_trigger_thoracic = [
+            " Palpatory examination of the thoracic musculature displays myofascial trigger points of the ",
+            " Evaluation of the thoracic spinal areas indicates that trigger points are present in the ",
+            " Palpation of the thoracic musculature reveals myofascial trigger points of the ",
+            " Examination of the thoracic spine reveals myofascial trigger points of the ",
+            " Palpation of the thoracic region indicates the presence of trigger points in the ",
+            " Myofascial trigger points are palpated in the ",
+            " Myofascial trigger points are present in the "
+        ]
+        
+        self.objective_rom_thoracic = [
+            " Examination of the thoracic spine revealed the ROM has decreased.",
+            " thoracic spine evaluation shows that the range of motion has decreased.",
+            " thoracic spine evaluation shows that the ROM has deteriorated.",
+            " Ranges of motion in the thoracic region have lowered.",
+            " thoracic range of motion has decreased.",
+            " thoracic region ROM has worsened."
+        ]   
+        
         self.objective_tender_lumbar = [
             " Palpation of the lumbar spine displayed tenderness in the spinous process at: ",
             " Palpation of the lumbar spine revealed tenderness at the following levels: ",
@@ -175,7 +206,6 @@ class Note:
             " There was tenderness on the spinous process at: "
         ]
         
-        # 6th sentence
         self.objective_tone_lumbar = [
             " Palpation of the lumbar musculature demonstrates hypertonicity in the ",
             " Examination of the lumbar spine region indicates the presence of increased tonus in the ",
@@ -187,7 +217,6 @@ class Note:
             " Lumbar spine palpation reveals increased muscle tone of the "        
         ]
         
-        # 7th sentence
         self.objective_trigger_lumbar = [
             " Palpatory examination of the lumbar musculature displays myofascial trigger points of the ",
             " Evaluation of the lumbar spinal areas indicates that trigger points are present in the ",
@@ -198,19 +227,16 @@ class Note:
             " Myofascial trigger points are present in the "
         ]
         
-        # 8th sentence
         self.objective_rom_lumbar = [
-            " Examination of the lumbar spine revealed the ROM has ",
-            " Lumbar spine evaluation shows that the range of motion has ",
-            " Lumbar spine evaluation shows that the ROM has ",
-            " Ranges of motion in the lumbar region have ",
-            " Lumbar range of motion has ",
-            " Lumbar region ROM has "
+            " Examination of the lumbar spine revealed the ROM has decreased.",
+            " Lumbar spine evaluation shows that the range of motion has decreased.",
+            " Lumbar spine evaluation shows that the ROM has deteriorated.",
+            " Ranges of motion in the lumbar region have lowered.",
+            " Lumbar range of motion has decreased.",
+            " Lumbar region ROM has worsened."
         ]   
         
-        # optional sentence
-        # test pain
-        self.objective_lumbar_test_pain = [
+        self.objective_test_pain = [
             " The patient complained of pain during testing.",
             " The patient reported pain during the performance of this test.",
             " The patient experienced pain during the execution of this test.",
@@ -220,18 +246,12 @@ class Note:
         ]
         
         # ASSESSMENT sentence bank
-        # 1st sentence
         # if patient status got worse, prompt user to give a reason (else give vague, generated reasoning)
-        self.assessment_status = [
-            "The patient's overall status has mildly improved since the last visit.",
-            "Overall assessment of the patient's condition is considered to be mildly improved since the last visit.",
-            "Overall the patient's condition is mildly improved since the last visit.",
-            "The patient's overall condition is considered to be mildly improved since the last visit.",
-            "The patient's condition has gotten moderately worse since their last visit."
-        ] 
-        
-        # 2nd sentence
-        # - improving, unchanging, worsening complaints (this depends on generated ratings)
+        self.assessment_status = [""]
+        self.assessment_starter = [
+            " Their ",
+            " The patient's ",
+        ]
 
     def _get_guaranteed_staircase_path(self, start, target, total_runs) -> list[int]:
         path = [start]
@@ -308,7 +328,7 @@ class Note:
         return complaint_sentence
 
 
-    def _convert_list_to_plain(self, input_list: list) -> str:
+    def _convert_list_to_plain(self, input_list: list, has_period: bool) -> str:
         sentence = ""
         counter = 1    
         
@@ -324,7 +344,7 @@ class Note:
                 sentence += ", "
             elif counter == len(input_list) - 1:
                 sentence += " and "
-            elif counter == len(input_list):
+            elif (counter == len(input_list) and has_period):
                 sentence += "."
             
             counter+=1
@@ -366,7 +386,7 @@ class Note:
     
     
     def get_paragraph(self, section: int) -> str:
-        global target_ratings
+        global target_ratings, improving_complaints, unchanged_complaints, worsening_complaints
         
         # check for null
         if not target_ratings:
@@ -392,9 +412,6 @@ class Note:
             # - if difference is negative (starting < target), it is worsening
             # - if difference is equal (starting == target), it is unchanged
             # - if difference is positive (starting > target), it is improving
-            improving_complaints = []
-            unchanged_complaints = []
-            worsening_complaints = []
             for complaint, start_rating in self.patient.get_ratings().items():
                 if complaint != "pain" and complaint != "health": 
                     target_rating = target_ratings[complaint] # get target rating
@@ -409,15 +426,15 @@ class Note:
         
             if improving_complaints:
                 paragraph += self.subjective_assessment_improving[random.randint(0, len(self.subjective_assessment_improving)-1)]
-                paragraph += self._convert_list_to_plain(improving_complaints)            
+                paragraph += self._convert_list_to_plain(improving_complaints, has_period=True)            
             
             if unchanged_complaints:
                 paragraph += self.subjective_assessment_unchanged[random.randint(0, len(self.subjective_assessment_unchanged)-1)]
-                paragraph += self._convert_list_to_plain(unchanged_complaints)            
+                paragraph += self._convert_list_to_plain(unchanged_complaints, has_period=True)            
             
             if worsening_complaints:
                 paragraph += self.subjective_assessment_worsening[random.randint(0, len(self.subjective_assessment_worsening)-1)]
-                paragraph += self._convert_list_to_plain(worsening_complaints)
+                paragraph += self._convert_list_to_plain(worsening_complaints, has_period=True)
             
             # append ratings from patient
             paragraph += self.subjective_ratings[random.randint(0, len(self.subjective_ratings)-1)]
@@ -426,8 +443,103 @@ class Note:
             return paragraph
         
         elif section == Sections.OBJECTIVE.value:
+            paragraph += self.objective_tender_cervical[random.randint(0, len(self.objective_tender_cervical)-1)]
+            paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_cervical"], has_period=True)
+            
+            # 0 -> tone, 1 -> trigger, 2 -> rom, 3 -> pain
+            if self.sorted_sentences["sorted_cervical"][0]:
+                paragraph += self.objective_tone_cervical[random.randint(0, len(self.objective_tone_cervical)-1)]
+                
+                # extract the list of affected areas, then append
+                parts = re.split(r"\s+of the\s+|\s+in the\s+", self.sorted_sentences["sorted_cervical"][0], flags=re.IGNORECASE)
+                affected_areas = parts[len(parts) - 1]
+                paragraph += f"{affected_areas}."
+                
+            if self.sorted_sentences["sorted_cervical"][1]:
+                paragraph += self.objective_trigger_cervical[random.randint(0, len(self.objective_trigger_cervical)-1)]
+                parts = re.split(r"\s+of the\s+|\s+in the\s+", self.sorted_sentences["sorted_cervical"][1], flags=re.IGNORECASE)
+                affected_areas = parts[len(parts) - 1]
+                paragraph += f"{affected_areas}."
+            if self.sorted_sentences["sorted_cervical"][2]:
+                paragraph += self.objective_rom_cervical[random.randint(0, len(self.objective_rom_cervical)-1)]
+            if self.sorted_sentences["sorted_cervical"][3]:
+                paragraph += self.objective_test_pain[random.randint(0, len(self.objective_test_pain)-1)]    
+                
+                
+            paragraph += self.objective_tender_thoracic[random.randint(0, len(self.objective_tender_thoracic)-1)]
+            paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_thoracic"], has_period=True)
+
+            if self.sorted_sentences["sorted_thoracic"][0]:
+                paragraph += self.objective_tone_thoracic[random.randint(0, len(self.objective_tone_thoracic)-1)]
+                parts = re.split(r"\s+of the\s+|\s+in the\s+", self.sorted_sentences["sorted_thoracic"][0], flags=re.IGNORECASE)
+                affected_areas = parts[len(parts) - 1]
+                paragraph += f"{affected_areas}."
+            if self.sorted_sentences["sorted_thoracic"][1]:
+                paragraph += self.objective_trigger_thoracic[random.randint(0, len(self.objective_trigger_thoracic)-1)]
+                parts = re.split(r"\s+of the\s+|\s+in the\s+", self.sorted_sentences["sorted_thoracic"][1], flags=re.IGNORECASE)
+                affected_areas = parts[len(parts) - 1]
+                paragraph += f"{affected_areas}."
+            if self.sorted_sentences["sorted_thoracic"][2]:
+                paragraph += self.objective_rom_thoracic[random.randint(0, len(self.objective_rom_thoracic)-1)]
+            if self.sorted_sentences["sorted_thoracic"][3]:
+                paragraph += self.objective_test_pain[random.randint(0, len(self.objective_test_pain)-1)]                
+                
+            
+            paragraph += self.objective_tender_lumbar[random.randint(0, len(self.objective_tender_lumbar)-1)]
+            paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_lumbar"], has_period=True)            
+            
+            if self.sorted_sentences["sorted_lumbar"][0]:
+                paragraph += self.objective_tone_lumbar[random.randint(0, len(self.objective_tone_lumbar)-1)]
+                parts = re.split(r"\s+of the\s+|\s+in the\s+", self.sorted_sentences["sorted_lumbar"][0], flags=re.IGNORECASE)
+                affected_areas = parts[len(parts) - 1]
+                paragraph += f"{affected_areas}."
+            if self.sorted_sentences["sorted_lumbar"][1]:
+                paragraph += self.objective_trigger_lumbar[random.randint(0, len(self.objective_trigger_lumbar)-1)]
+                parts = re.split(r"\s+of the\s+|\s+in the\s+", self.sorted_sentences["sorted_lumbar"][1], flags=re.IGNORECASE)
+                affected_areas = parts[len(parts) - 1]
+                paragraph += f"{affected_areas}."
+            if self.sorted_sentences["sorted_lumbar"][2]:
+                paragraph += self.objective_rom_lumbar[random.randint(0, len(self.objective_rom_lumbar)-1)]
+            if self.sorted_sentences["sorted_lumbar"][3]:
+                paragraph += self.objective_test_pain[random.randint(0, len(self.objective_test_pain)-1)]                
+            
             return paragraph
+        
         elif section == Sections.ASSESSMENT.value:
+            global overall_assessment
+            start_rating = self.patient.get_ratings()["health"]
+            target_rating = target_ratings["health"] # get target rating
+            
+            if abs(start_rating - target_rating) > 1:
+                overall_assessment += "has moderately "
+            elif abs(start_rating - target_rating) == 1:
+                overall_assessment += "has mildly "
+            
+            # compare ratings
+            if start_rating > target_rating: # getting worse
+                overall_assessment += "worsened"
+            elif start_rating == target_rating: # unchanged
+                overall_assessment += "is unchanged"
+            else: # getting better
+                overall_assessment += "improved"
+                
+            # this is messy, definitely rework this later
+            self.assessment_status = [
+                f"The patient's overall status {overall_assessment} since the last visit.",
+                f"Overall assessment of the patient's condition {overall_assessment} since the last visit.",
+                f"Overall, the patient's condition {overall_assessment} since the last visit.",
+                f"The patient's overall condition {overall_assessment} since the last visit.",
+                f"The patient's condition {overall_assessment} since their last visit."
+            ] 
+                        
+            paragraph += self.assessment_status[random.randint(0, len(self.assessment_status)-1)]
+            if improving_complaints:
+                paragraph += f"{self.assessment_starter[random.randint(0, len(self.assessment_starter)-1)]}{self._convert_list_to_plain(improving_complaints, has_period=False)} is determined to have improved."
+            if unchanged_complaints:
+                paragraph += f"{self.assessment_starter[random.randint(0, len(self.assessment_starter)-1)]}{self._convert_list_to_plain(unchanged_complaints, has_period=False)} is determined to be unchanged."
+            if worsening_complaints:
+                paragraph += f"{self.assessment_starter[random.randint(0, len(self.assessment_starter)-1)]}{self._convert_list_to_plain(worsening_complaints, has_period=False)} is determined to have worsened."
+            
             return paragraph
         
         raise ValueError(f"'{section}' is not a valid section id")

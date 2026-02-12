@@ -7,7 +7,7 @@ DESC:
 
 Author: David J. Kim,
 Created: 01-16-2026,
-Modified: 01-23-2026,
+Modified: 01-30-2026,
 Version: 1.0.0
 
 USAGE:
@@ -71,6 +71,12 @@ class Sections(Enum):
     ASSESSMENT = 2
     
 NOTES_PATH = '../' # directory to check for existing soap notes
+PAGE_HEIGHT = "11in"
+PAGE_WIDTH = "8.5in"
+MARGIN_TOP = MARGIN_BOTTOM = MARGIN_LEFT = MARGIN_RIGHT = "1in"
+
+# # do initial page set up
+# r.set_layout(ph="11in", pw="8.5in", mt="1in", mb="1in", ml="1in", mr="1in")
 
 # prefixes to denote different terminal msgs
 ERROR_MSG_PREFIX = "[ERROR]: "
@@ -86,11 +92,13 @@ tender_thoracic_regions = []
 tender_lumbar_regions = []
 
 # various sentences to help reconstruct the new note document
-muscle_tone_sentences = []
-trigger_point_sentences = []
-rom_sentences = []
-test_pain_sentences = []
-lumbar_tenderness_sentences = []
+
+# sorted via index:
+# 0 -> tone, 1 -> trigger, 2 -> rom, 3 -> pain
+sorted_cervical_sentences = []
+sorted_thoracic_sentences = []
+sorted_lumbar_sentences = []
+lumbar_tenderness_sentence = []
 
 # ------------------------------------------------------------------------------------------------------------------------
 #                                             AutoSOAP EXECUTION FLOW outline
@@ -277,7 +285,7 @@ def find_previous_note() -> str:
 
 def retrieve_info_from_SD(filename: str) -> None:
     # retrieve information from prev_note that was found
-    global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, lumbar_tenderness_sentences
+    global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, sorted_cervical_sentences, sorted_thoracic_sentences, sorted_lumbar_sentences, lumbar_tenderness_sentence
 
     # read the file
     with open(f"{NOTES_PATH}{filename}", 'r', encoding='cp1252') as f:
@@ -330,7 +338,7 @@ def retrieve_info_from_SD(filename: str) -> None:
     
     # find title
     title = ""
-    title_pattern = r"(Mr\.|Mrs\.|Ms\.)"
+    title_pattern = r"(Mr\.|Mrs\.|Ms\.|Dr\.)"
     title_match = re.search(title_pattern, normalized, re.IGNORECASE)
     if title_match:
         title = title_match.group(1)
@@ -395,7 +403,7 @@ def retrieve_info_from_SD(filename: str) -> None:
             print(f"{DEBUG_MSG_PREFIX}{patient.get_birthday().get_date_readable()}")
             print(f"{DEBUG_MSG_PREFIX}{patient.get_ratings()}")   
     else:
-        raise ValueError("Failed to extract patient data")     
+        raise ValueError("Failed to extract patient data. Check whether read note has correct formatting for name, street, address, and dob")     
     
     # find regions in regards to tenderness/palpation
     # problem with this is that it gets ALL cervical regions, this is not correct
@@ -425,39 +433,180 @@ def retrieve_info_from_SD(filename: str) -> None:
         print(f"{DEBUG_MSG_PREFIX}tender_cervical_regions -> {tender_cervical_regions}")
         print(f"{DEBUG_MSG_PREFIX}tender_thoracic_regions -> {tender_thoracic_regions}")
         print(f"{DEBUG_MSG_PREFIX}tender_lumbar_regions -> {tender_lumbar_regions}")
-        
-    # find muscle tone sentences
-    tone_targets = ["hypertonicity", "increased tonus", "muscle tone"]
-    find_sentences(tone_targets, muscle_tone_sentences, normalized, re.IGNORECASE)
-        
-    # find trigger point sentences
-    trigger_targets = ["trigger points"]
-    find_sentences(trigger_targets, trigger_point_sentences, normalized, re.IGNORECASE)
+
+
+    # extract OBJECTIVE paragraph content
+    objective_paragraph = re.search(r"Objective\s+(.*?)\s+Assessment", normalized, re.DOTALL)
+    if objective_paragraph:
+        print(f"{DEBUG_MSG_PREFIX}objective_paragraph -> {objective_paragraph.group(1).strip()}")
+    else:
+        raise ValueError("No objective paragraph found")
     
-    # find ROM sentences 
-    rom_targets = ["ROM", "range of motion", "ranges of motion"]
-    find_sentences(rom_targets, rom_sentences, normalized, re.DOTALL)
+    # break up the paragraph into individual sentences, remove last element as it's blank
+    objective_sentences = objective_paragraph.group(1).strip().split(".")[:-1]
+    print(f"{DEBUG_MSG_PREFIX}objective_sentences -> {objective_sentences}")
     
-    # find test pain sentences
-    test_pain_targets = ["experienced discomfort", "experienced pain",
-                         "complained", "reported pain", "pain was elicited",
-                         "there is pain", "there was pain", "increased pain",
-                         "felt discomfort"]
-    find_sentences(test_pain_targets, test_pain_sentences, normalized, re.IGNORECASE)
+    
+    # each sentence now has an index associated with it
+    
+    # handle each case:
+    # - there are 2^3 cases. there are 3 distinct sections and each of them may or may not be present in the paragraph.
+    # - the hardest part is categorizing each sentence correctly to each section since this is not explicitly denoted and the wording varies.
+    # - having the index can be useful in SOME cases
+    
+    
+    # we can go through the individual sentences found in the objective section and easily find indices that are part of one section or the other.
+    # the most obvious pattern is the list of spinous levels which do split the paragraph into their distinct sections
+    # the only exception is lumbar as it mentions tender regions before listing its spinous process
+    
+    # get the indices where the sections start
+    section_end_indices = []
+    for i, sentence in enumerate(objective_sentences):
+        if re.search(r"[A-Z]\d+", sentence):
+            section_end_indices.append(i)
+            
+    # store sentences inside distinct regions within the objective paragraph
+    cervical_sentences = []
+    thoracic_sentences = []
+    lumbar_sentences = []
+            
+    # we can identify which section is which by referring to the regions we found in the previous paragraph
+    # handle each unique case by categorizing accordingly
+    if not tender_cervical_regions:
+        if not tender_thoracic_regions:
+            if not tender_lumbar_regions:
+                raise ValueError("No regions found. Check document syntax")
+            else:
+                # only lumbar region
+                lumbar_sentences.extend(objective_sentences)
+                
+        else:
+            if not tender_lumbar_regions:
+                # only thoracic region
+                thoracic_sentences.extend(objective_sentences)
+                
+            else:            
+                # thoracic, lumbar
+                for i, sentence in enumerate(objective_sentences):
+                    if (i < section_end_indices[1]):
+                        thoracic_sentences.append(sentence)
+                    else:
+                        lumbar_sentences.append(sentence)
+            
+    else:
+        if not tender_thoracic_regions:
+            if not tender_lumbar_regions:
+                # only cervical region
+                cervical_sentences.extend(objective_sentences)
+                
+            else:
+                # cervical, lumbar
+                for i, sentence in enumerate(objective_sentences):
+                    if (i < section_end_indices[1]):
+                        cervical_sentences.append(sentence)
+                    else:
+                        lumbar_sentences.append(sentence)
+                
+        else:
+            if not tender_lumbar_regions:
+                # cervical, thoracic
+                for i, sentence in enumerate(objective_sentences):
+                    if (i < section_end_indices[1]):
+                        cervical_sentences.append(sentence)
+                    else:
+                        thoracic_sentences.append(sentence)
+                
+            else:               
+                # all regions present 
+                for i, sentence in enumerate(objective_sentences):
+                    if (i < section_end_indices[1]):
+                        cervical_sentences.append(sentence)
+                    elif (i < section_end_indices[2]):
+                        thoracic_sentences.append(sentence)
+                    else:
+                        lumbar_sentences.append(sentence)
+        
+    # find and categorize sentences within each region
+    cervical_tone = ""
+    thoracic_tone = ""
+    lumbar_tone = ""
+    cervical_trigger = ""
+    thoracic_trigger = ""
+    lumbar_trigger = ""   
+    cervical_rom = ""
+    thoracic_rom = ""
+    lumbar_rom = ""  
+    cervical_pain = ""
+    thoracic_pain = ""
+    lumbar_pain = ""
+    if cervical_sentences:
+        for sentence in cervical_sentences:
+            if re.search(r"hypertonicity|increased tonus|muscle tone", sentence, re.IGNORECASE):
+                cervical_tone = sentence
+            if "trigger points" in sentence:
+                cervical_trigger = sentence
+            if re.search(r"ROM|range of motion|ranges of motion", sentence):
+                cervical_rom = sentence            
+            if re.search(r"experienced discomfort|experienced pain|complained|reported pain|pain was elicited|there is pain|there was pain|increased pain|felt discomfort", sentence):
+                cervical_pain = sentence                    
+                
+    if thoracic_sentences:
+        for sentence in thoracic_sentences:   
+            if re.search(r"hypertonicity|increased tonus|muscle tone", sentence, re.IGNORECASE):
+                thoracic_tone = sentence
+            if "trigger points" in sentence:
+                thoracic_trigger = sentence   
+            if re.search(r"ROM|range of motion|ranges of motion", sentence):
+                thoracic_rom = sentence                       
+            if re.search(r"experienced discomfort|experienced pain|complained|reported pain|pain was elicited|there is pain|there was pain|increased pain|felt discomfort", sentence):
+                thoracic_pain = sentence                       
+                
+    if lumbar_sentences:
+        for sentence in lumbar_sentences:    
+            if re.search(r"hypertonicity|increased tonus|muscle tone", sentence, re.IGNORECASE):
+                lumbar_tone = sentence
+            if "trigger points" in sentence:
+                lumbar_trigger = sentence    
+            if re.search(r"ROM|range of motion|ranges of motion", sentence):
+                lumbar_rom = sentence
+            if re.search(r"experienced discomfort|experienced pain|complained|reported pain|pain was elicited|there is pain|there was pain|increased pain|felt discomfort", sentence):
+                lumbar_pain = sentence                       
     
     lumbar_tenderness_targets = ["there is tenderness in", "there is tenderness upon",
                                  "tenderness is notable", "reveals tenderness",
                                  "tenderness is present", "pain in the lumbar",
                                  "reveals tender areas"]
-    find_sentences(lumbar_tenderness_targets, lumbar_tenderness_sentences, normalized, re.IGNORECASE)
-        
+    find_sentences(lumbar_tenderness_targets, lumbar_tenderness_sentence, normalized, re.IGNORECASE)    
+    
+    sorted_cervical_sentences = [cervical_tone, cervical_trigger, cervical_rom, cervical_pain]
+    sorted_thoracic_sentences = [thoracic_tone, thoracic_trigger, thoracic_rom, thoracic_pain]
+    sorted_lumbar_sentences = [lumbar_tone, lumbar_trigger, lumbar_rom, lumbar_pain]
+    
     if debug_enabled:
-        print(f"{DEBUG_MSG_PREFIX}muscle tone sentences -> {muscle_tone_sentences}")
-        print(f"{DEBUG_MSG_PREFIX}trigger point sentences -> {trigger_point_sentences}")
-        print(f"{DEBUG_MSG_PREFIX}ROM sentences -> {rom_sentences}")
-        print(f"{DEBUG_MSG_PREFIX}test pain sentences -> {test_pain_sentences}")
-        print(f"{DEBUG_MSG_PREFIX}lumbar tenderness sentences -> {lumbar_tenderness_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}cervical_sentences -> {cervical_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}cervical_tone -> {cervical_tone}")
+        print(f"{DEBUG_MSG_PREFIX}cervical_trigger -> {cervical_trigger}")
+        print(f"{DEBUG_MSG_PREFIX}cervical_rom -> {cervical_rom}")
+        print(f"{DEBUG_MSG_PREFIX}cervical_pain -> {cervical_pain}")
+
+        print(f"{DEBUG_MSG_PREFIX}thoracic_sentences -> {thoracic_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}thoracic_tone -> {thoracic_tone}")
+        print(f"{DEBUG_MSG_PREFIX}thoracic_trigger -> {thoracic_trigger}")
+        print(f"{DEBUG_MSG_PREFIX}thoracic_rom -> {thoracic_rom}")        
+        print(f"{DEBUG_MSG_PREFIX}thoracic_pain -> {thoracic_pain}")
+                
+        print(f"{DEBUG_MSG_PREFIX}lumbar_sentences -> {lumbar_sentences}")
+        print(f"{DEBUG_MSG_PREFIX}lumbar_tone -> {lumbar_tone}")
+        print(f"{DEBUG_MSG_PREFIX}lumbar_trigger -> {lumbar_trigger}")
+        print(f"{DEBUG_MSG_PREFIX}lumbar_rom -> {lumbar_rom}")   
+        print(f"{DEBUG_MSG_PREFIX}lumbar_pain -> {lumbar_pain}")                 
+        print(f"{DEBUG_MSG_PREFIX}lumbar tenderness sentence -> {lumbar_tenderness_sentence}")
         
+        print(f"{DEBUG_MSG_PREFIX}sorted_cervical_sentences -> {sorted_cervical_sentences}")  
+        print(f"{DEBUG_MSG_PREFIX}sorted_thoracic_sentences -> {sorted_thoracic_sentences}")  
+        print(f"{DEBUG_MSG_PREFIX}sorted_lumbar_sentences -> {sorted_lumbar_sentences}")  
+        print(f"{DEBUG_MSG_PREFIX}section_end_indices -> {section_end_indices}")
+
     
 def find_sentences(targets: list[str], destination: list[str], content: str, search_flag) -> bool:
     # do search of target strings
@@ -517,7 +666,7 @@ def add_header_section(date: Date) -> None:
         raise ValueError("Patient is None")
     
     # do initial page set up
-    r.set_layout(ph="11in", pw="8.5in", mt="1in", mb="1in", ml="1in", mr="1in")
+    r.set_layout(ph=PAGE_HEIGHT, pw=PAGE_WIDTH, mt=MARGIN_TOP, mb=MARGIN_BOTTOM, ml=MARGIN_LEFT, mr=MARGIN_RIGHT)
     
     # add page content
     r.par("Back to Wellness", style="s26")
@@ -540,11 +689,21 @@ def add_header_section(date: Date) -> None:
 
 
 def generate_content() -> None:
-    global patient
+    global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, sorted_cervical_sentences, sorted_thoracic_sentences, sorted_lumbar_sentences, lumbar_tenderness_sentence
     if not patient:
         raise ValueError("Patient is None")
     
-    note = Note(patient)
+    sorted_sentences = {
+        "tender_cervical": tender_cervical_regions,
+        "tender_thoracic": tender_thoracic_regions,
+        "tender_lumbar": tender_lumbar_regions,
+        "sorted_cervical": sorted_cervical_sentences,
+        "sorted_thoracic": sorted_thoracic_sentences,
+        "sorted_lumbar": sorted_lumbar_sentences,
+        "lumbar_tenderness": lumbar_tenderness_sentence
+    }
+    
+    note = Note(patient, sorted_sentences)
 
     # add sections
     r.par(f"Subjective Complaint", style="s28")
@@ -560,8 +719,8 @@ def do_single_fill() -> None:
     # get patient info from notes
     print(f"Retieving patient info...")
     filename = find_previous_note()
-    retrieve_info_from_SD(filename)
-    # retrieve_info_from_SD("SD_opened_with_word.rtf")
+    # retrieve_info_from_SD(filename)
+    retrieve_info_from_SD("SD_Three_Regions_1.rtf")
     # retrieve_info_from_SD("SD_opened_with_word_alt.rtf")
     
     # ask for a date
@@ -575,9 +734,9 @@ def do_single_fill() -> None:
     # split note generation into 4 sections:
     # - page setup & document header        X
     # - SUBJECTIVE                          X
-    # - OBJECTIVE                           *
-    # - ASSESSMENT                          -
-    # - PLAN & TREATMENT                    -
+    # - OBJECTIVE                           X
+    # - ASSESSMENT                          X
+    # - PLAN & TREATMENT                    *
     add_header_section(temp)
     generate_content()
     r.create("test") # output .rtf file

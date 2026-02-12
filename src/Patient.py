@@ -58,13 +58,21 @@ class Patient:
         return self.title
     
     def get_pronoun(self) -> str:
-        if self.title is "Mr.":
+        if self.title == "Mr.":
             return "he"
+        
+        if self.title == "Dr.":
+            return "they"
+        
         return "she"
     
     def get_pronoun_possessive(self) -> str:
-        if self.title is "Mr.":
+        if self.title == "Mr.":
             return "his"
+        
+        if self.title == "Dr.":
+            return "their"    
+    
         return "her"        
     
     def get_street(self) -> str:
