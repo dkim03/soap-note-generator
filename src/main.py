@@ -716,13 +716,15 @@ def generate_content() -> None:
     r.par(f"Today\'s Treatment", style="s28")
     r.par(treatment_content, style="s21")
 
+
 def do_single_fill() -> None:
     # get patient info from notes
     print(f"Retieving patient info...")
     filename = find_previous_note()
     # retrieve_info_from_SD(filename)
-    # retrieve_info_from_SD("SD_Three_Regions_1.rtf")
-    retrieve_info_from_SD("SD_opened_with_word.rtf")
+    retrieve_info_from_SD("SD_Three_Regions_1.rtf")
+    # retrieve_info_from_SD("SD_opened_with_word.rtf")
+    # retrieve_info_from_SD("SD_Patient_Name_1.rtf")
     
     # ask for a date
     date = get_date_from_calendar()
@@ -737,9 +739,14 @@ def do_single_fill() -> None:
     # - SUBJECTIVE                          X
     # - OBJECTIVE                           X
     # - ASSESSMENT                          X
-    # - PLAN & TREATMENT                    *
+    # - PLAN & TREATMENT                    X
     add_header_section(temp)
     generate_content()
+    
+    # add footer text
+    if patient:
+        r.set_footer(line1=patient.get_full_name(), line2="Confidential")
+    
     r.create("test") # output .rtf file
     print_success_msg()
     
