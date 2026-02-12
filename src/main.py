@@ -181,12 +181,12 @@ treatment_content = ""
 
 
 # PROJECT PROGRESS ('X' -> done, '*' -> WIP, '-' -> not started, '|' -> blocked)
-#   SINGLE FILL                                 *
+#   SINGLE FILL                                 X
 #   > date retrieval                                X
 #   > SOAP note patient info retrieval              X
 #   > ratings, etc. retrieval                       X
-#   > note generation algo                          *
-#   PARTIAL FILL                                -
+#   > note generation algo                          X
+#   PARTIAL FILL                                *
 #   FULL FILL                                   -
 #   Tkinter GUI integration                     -
 #   Deployable prototype                        -
@@ -375,14 +375,23 @@ def retrieve_info_from_SD(filename: str) -> None:
         date_parts = dob.strip().split("/")
         month, day, year = map(int, date_parts)
         
-        # find street and address
-        street_address_pattern = (
-            rf"{last}\s*\\par\s*"          # start after the last name
-            r"(?P<street>[^\\]+?)\s*\\par\s*"      # match street until the next \par
-            r"(?P<address>[^\\]+?)\s*\\par\s*"     # match address until the next \par
-            r"Date"                                # stop at "Date"
+        new_pattern = (
+            rf"{last}\\par}}\s+"
+            r"{\\pard\s+\\s27\\ql\\f4\\fs22\\lang1033\s+(?P<street>.*?)\\par}\s+"
+            r"{\\pard\s+\\s27\\ql\\f4\\fs22\\lang1033\s+(?P<address>.*?)\\par}\s+"
+            r".*?Date of Birth"
         )
-        street_address_match = re.search(street_address_pattern, raw_rtf_normalized, re.IGNORECASE)
+        
+        old_pattern = (
+            rf"{last}\s*\\par\s*"
+            r"(?P<street>[^\\]+?)\s*\\par\s*"
+            r"(?P<address>[^\\]+?)\s*\\par\s*"
+            r"Date"
+        )
+
+        street_address_match = re.search(new_pattern, raw_rtf_normalized, re.IGNORECASE | re.DOTALL)
+        if not street_address_match:
+            street_address_match = re.search(old_pattern, raw_rtf_normalized, re.IGNORECASE | re.DOTALL)
         
         street = ""
         address = ""
@@ -439,15 +448,13 @@ def retrieve_info_from_SD(filename: str) -> None:
 
     # extract OBJECTIVE paragraph content
     objective_paragraph = re.search(r"Objective\s+(.*?)\s+Assessment", normalized, re.DOTALL)
-    if objective_paragraph:
-        print(f"{DEBUG_MSG_PREFIX}objective_paragraph -> {objective_paragraph.group(1).strip()}")
-    else:
-        raise ValueError("No objective paragraph found")
     
+    # check null
+    if not objective_paragraph:
+        raise ValueError("No objective paragraph found")
+        
     # break up the paragraph into individual sentences, remove last element as it's blank
     objective_sentences = objective_paragraph.group(1).strip().split(".")[:-1]
-    print(f"{DEBUG_MSG_PREFIX}objective_sentences -> {objective_sentences}")
-    
     
     # each sentence now has an index associated with it
     
@@ -721,10 +728,20 @@ def do_single_fill() -> None:
     # get patient info from notes
     print(f"Retieving patient info...")
     filename = find_previous_note()
-    # retrieve_info_from_SD(filename)
-    retrieve_info_from_SD("SD_Three_Regions_1.rtf")
-    # retrieve_info_from_SD("SD_opened_with_word.rtf")
-    # retrieve_info_from_SD("SD_Patient_Name_1.rtf")
+    
+    # ensure filename follows this syntax:
+    # i.e. -> SD_First_Last_1 ... SD_First_Last_10
+    retrieve_info_from_SD(filename)
+    
+    match = re.search(r"_\d+", filename)
+    if not match:
+        raise ValueError(f"{filename}: filename is not numbered and/or formatted correctly. Make sure the filename looks like this -> SD_First_Last_2")
+    
+    # convert the found number in the filename into a usable int
+    doc_id = int(re.sub(r"[^\d]", "", match.group(0).strip()))
+    doc_id += 1 # increment
+    
+    print(doc_id)
     
     # ask for a date
     date = get_date_from_calendar()
@@ -746,18 +763,32 @@ def do_single_fill() -> None:
     # add footer text
     if patient:
         r.set_footer(line1=patient.get_full_name(), line2="Confidential")
-    
-    r.create("test") # output .rtf file
+        temp_first = patient.get_first_name()
+        temp_last = patient.get_last_name()
+        r.create(f"SD_{temp_first}_{temp_last}_{doc_id}") # output .rtf file
+        
     print_success_msg()
     
 
 # TODO
 def do_partial_fill() -> None:
+    
+    # starts from a prev note
+    # prompt the user to get the number of notes to generate
+    # loop N times of single fill
+    # retrieve a single target rating for notes to converge towards
+    # utilize rating interpolation algo to generate believable ratings
+    # ensure naming convention is followed by all notes created
+    
     pass
 
 
 # TODO
 def do_full_fill() -> None:
+    
+    # starts from exam (EI or EN)
+    
+    
     pass
 
         
