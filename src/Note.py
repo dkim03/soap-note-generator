@@ -34,6 +34,7 @@ class Sections(Enum):
     SUBJECTIVE = 0
     OBJECTIVE = 1
     ASSESSMENT = 2
+    PLAN = 3
     
 target_ratings = None
 overall_assessment = ""
@@ -116,10 +117,9 @@ class Note:
         # OBJECTIVE sentence bank
         self.objective_tender_cervical = [
             "Palpation of the cervical spine displayed tenderness in the spinous process at: ",
-            "Palpation of the cervical spine revealed tenderness at the following levels: ",
+            "Evaluation of the cervical spine revealed tenderness at the following levels: ",
             "Examination of the cervical region indicated discomfort and pain in the spinous process at: ",
             "Evaluation of the cervical spinal areas showed discomfort to be present in the spinous process at: ",
-            "Examination of the cervical region indicated discomfort and pain in the spinous process at: ",
             "There is tenderness of the following cervical spinous levels: ",
             "Cervical spine tenderness was noted in the spinous process region at: ",
             "Cervical spine palpation elicited tenderness of spinous process at "
@@ -145,9 +145,9 @@ class Note:
         ]
         
         self.objective_rom_cervical = [
-            " Examination of the cervical spine revealed the ROM has decreased.",
-            " Cervical spine evaluation shows that the range of motion has decreased.",
-            " Cervical spine evaluation shows that the ROM has deteriorated.",
+            " Examination of the cervical spine revealed ROM has decreased.",
+            " Cervical spine evaluation shows that range of motion has decreased.",
+            " Cervical spine evaluation shows that ROM has deteriorated.",
             " Ranges of motion in the cervical region have lowered.",
             " Cervical range of motion has decreased.",
             " Cervical spine ROM has worsened."
@@ -155,11 +155,10 @@ class Note:
         
         self.objective_tender_thoracic = [
             " Palpation of the thoracic spine displayed tenderness in the spinous process at: ",
-            " Palpation of the thoracic spine revealed tenderness at the following levels: ",
+            " Examination of the thoracic spine revealed tenderness at the following levels: ",
+            " There is tenderness of the following thoracic spinous levels: ",
             " Examination of the thoracic region indicated discomfort and pain in the spinous process at: ",
             " Evaluation of the thoracic spinal areas showed discomfort to be present in the spinous process at: ",
-            " Examination of the thoracic region indicated discomfort and pain in the spinous process at: ",
-            " There is tenderness of the following thoracic spinous levels: ",
             " Thoracic spine tenderness was noted in the spinous process region at: ",
             " Thoracic spine palpation elicited tenderness of spinous process at "
         ]
@@ -186,9 +185,9 @@ class Note:
         ]
         
         self.objective_rom_thoracic = [
-            " Examination of the thoracic spine revealed the ROM has decreased.",
-            " thoracic spine evaluation shows that the range of motion has decreased.",
-            " thoracic spine evaluation shows that the ROM has deteriorated.",
+            " Examination of the thoracic spine revealed ROM has decreased.",
+            " thoracic spine evaluation shows that range of motion has decreased.",
+            " thoracic spine evaluation shows that ROM has deteriorated.",
             " Ranges of motion in the thoracic region have lowered.",
             " thoracic range of motion has decreased.",
             " thoracic region ROM has worsened."
@@ -228,9 +227,9 @@ class Note:
         ]
         
         self.objective_rom_lumbar = [
-            " Examination of the lumbar spine revealed the ROM has decreased.",
-            " Lumbar spine evaluation shows that the range of motion has decreased.",
-            " Lumbar spine evaluation shows that the ROM has deteriorated.",
+            " Examination of the lumbar spine revealed ROM has decreased.",
+            " Lumbar spine evaluation shows that range of motion has decreased.",
+            " Lumbar spine evaluation shows that ROM has deteriorated.",
             " Ranges of motion in the lumbar region have lowered.",
             " Lumbar range of motion has decreased.",
             " Lumbar region ROM has worsened."
@@ -239,18 +238,28 @@ class Note:
         self.objective_test_pain = [
             " The patient complained of pain during testing.",
             " The patient reported pain during the performance of this test.",
-            " The patient experienced pain during the execution of this test.",
             " The patient indicated that they felt discomfort and pain during the performance of this exam.",
+            " The patient experienced pain during the execution of this test.",
             " The patient experienced discomfort during the execution of this test.",
             " Pain was elicited while performing this test."
         ]
         
         # ASSESSMENT sentence bank
-        # if patient status got worse, prompt user to give a reason (else give vague, generated reasoning)
+        # TODO: if patient status got worse, prompt user to give a reason (else give vague, generated reasoning)
         self.assessment_status = [""]
         self.assessment_starter = [
             " Their ",
             " The patient's ",
+        ]
+        
+        # PLAN sentence bank
+        self.plan_sentences = [
+            f"{self.patient.get_first_name()} should proceed with therapies as directed.",
+            "Proceed with therapies as directed.",
+            "Therapy will continue as directed.",
+            "Proceed with therapies as stated earlier.",
+            "Continue with therapies as directed.",
+            f"Today's visit indicates that {self.patient.get_first_name()} should proceed with therapy as directed."
         ]
 
     def _get_guaranteed_staircase_path(self, start, target, total_runs) -> list[int]:
@@ -443,11 +452,14 @@ class Note:
             return paragraph
         
         elif section == Sections.OBJECTIVE.value:
-            paragraph += self.objective_tender_cervical[random.randint(0, len(self.objective_tender_cervical)-1)]
-            paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_cervical"], has_period=True)
+            # index 0 -> tone, 1 -> trigger, 2 -> rom, 3 -> pain
             
-            # 0 -> tone, 1 -> trigger, 2 -> rom, 3 -> pain
+            # cervical region
             if self.sorted_sentences["sorted_cervical"][0]:
+                
+                # starting sentence
+                paragraph += self.objective_tender_cervical[random.randint(0, len(self.objective_tender_cervical)-1)]
+                paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_cervical"], has_period=True)                
                 paragraph += self.objective_tone_cervical[random.randint(0, len(self.objective_tone_cervical)-1)]
                 
                 # extract the list of affected areas, then append
@@ -465,11 +477,10 @@ class Note:
             if self.sorted_sentences["sorted_cervical"][3]:
                 paragraph += self.objective_test_pain[random.randint(0, len(self.objective_test_pain)-1)]    
                 
-                
-            paragraph += self.objective_tender_thoracic[random.randint(0, len(self.objective_tender_thoracic)-1)]
-            paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_thoracic"], has_period=True)
-
+            # thoracic region
             if self.sorted_sentences["sorted_thoracic"][0]:
+                paragraph += self.objective_tender_thoracic[random.randint(0, len(self.objective_tender_thoracic)-1)]
+                paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_thoracic"], has_period=True)                
                 paragraph += self.objective_tone_thoracic[random.randint(0, len(self.objective_tone_thoracic)-1)]
                 parts = re.split(r"\s+of the\s+|\s+in the\s+", self.sorted_sentences["sorted_thoracic"][0], flags=re.IGNORECASE)
                 affected_areas = parts[len(parts) - 1]
@@ -482,13 +493,12 @@ class Note:
             if self.sorted_sentences["sorted_thoracic"][2]:
                 paragraph += self.objective_rom_thoracic[random.randint(0, len(self.objective_rom_thoracic)-1)]
             if self.sorted_sentences["sorted_thoracic"][3]:
-                paragraph += self.objective_test_pain[random.randint(0, len(self.objective_test_pain)-1)]                
-                
+                paragraph += self.objective_test_pain[random.randint(0, len(self.objective_test_pain)-1)]
             
-            paragraph += self.objective_tender_lumbar[random.randint(0, len(self.objective_tender_lumbar)-1)]
-            paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_lumbar"], has_period=True)            
-            
+            # lumbar region
             if self.sorted_sentences["sorted_lumbar"][0]:
+                paragraph += self.objective_tender_lumbar[random.randint(0, len(self.objective_tender_lumbar)-1)]
+                paragraph += self._convert_list_to_plain(self.sorted_sentences["tender_lumbar"], has_period=True)                     
                 paragraph += self.objective_tone_lumbar[random.randint(0, len(self.objective_tone_lumbar)-1)]
                 parts = re.split(r"\s+of the\s+|\s+in the\s+", self.sorted_sentences["sorted_lumbar"][0], flags=re.IGNORECASE)
                 affected_areas = parts[len(parts) - 1]
@@ -540,6 +550,10 @@ class Note:
             if worsening_complaints:
                 paragraph += f"{self.assessment_starter[random.randint(0, len(self.assessment_starter)-1)]}{self._convert_list_to_plain(worsening_complaints, has_period=False)} is determined to have worsened."
             
+            return paragraph
+        
+        elif section == Sections.PLAN.value:
+            paragraph += self.plan_sentences[random.randint(0, len(self.plan_sentences)-1)]
             return paragraph
         
         raise ValueError(f"'{section}' is not a valid section id")

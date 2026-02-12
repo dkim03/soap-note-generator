@@ -7,7 +7,7 @@ DESC:
 
 Author: David J. Kim,
 Created: 01-16-2026,
-Modified: 01-30-2026,
+Modified: 02-11-2026,
 Version: 1.0.0
 
 USAGE:
@@ -69,6 +69,7 @@ class Sections(Enum):
     SUBJECTIVE = 0
     OBJECTIVE = 1
     ASSESSMENT = 2
+    PLAN = 3
     
 NOTES_PATH = '../' # directory to check for existing soap notes
 PAGE_HEIGHT = "11in"
@@ -98,7 +99,8 @@ tender_lumbar_regions = []
 sorted_cervical_sentences = []
 sorted_thoracic_sentences = []
 sorted_lumbar_sentences = []
-lumbar_tenderness_sentence = []
+
+treatment_content = ""
 
 # ------------------------------------------------------------------------------------------------------------------------
 #                                             AutoSOAP EXECUTION FLOW outline
@@ -285,7 +287,7 @@ def find_previous_note() -> str:
 
 def retrieve_info_from_SD(filename: str) -> None:
     # retrieve information from prev_note that was found
-    global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, sorted_cervical_sentences, sorted_thoracic_sentences, sorted_lumbar_sentences, lumbar_tenderness_sentence
+    global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, sorted_cervical_sentences, sorted_thoracic_sentences, sorted_lumbar_sentences
 
     # read the file
     with open(f"{NOTES_PATH}{filename}", 'r', encoding='cp1252') as f:
@@ -570,17 +572,16 @@ def retrieve_info_from_SD(filename: str) -> None:
             if re.search(r"ROM|range of motion|ranges of motion", sentence):
                 lumbar_rom = sentence
             if re.search(r"experienced discomfort|experienced pain|complained|reported pain|pain was elicited|there is pain|there was pain|increased pain|felt discomfort", sentence):
-                lumbar_pain = sentence                       
-    
-    lumbar_tenderness_targets = ["there is tenderness in", "there is tenderness upon",
-                                 "tenderness is notable", "reveals tenderness",
-                                 "tenderness is present", "pain in the lumbar",
-                                 "reveals tender areas"]
-    find_sentences(lumbar_tenderness_targets, lumbar_tenderness_sentence, normalized, re.IGNORECASE)    
+                lumbar_pain = sentence                         
     
     sorted_cervical_sentences = [cervical_tone, cervical_trigger, cervical_rom, cervical_pain]
     sorted_thoracic_sentences = [thoracic_tone, thoracic_trigger, thoracic_rom, thoracic_pain]
     sorted_lumbar_sentences = [lumbar_tone, lumbar_trigger, lumbar_rom, lumbar_pain]
+    
+    treatment_match = re.search(r"Today\'s\s+Treatment*[:\-]*\s*(.*)", normalized, re.IGNORECASE | re.DOTALL)
+    if treatment_match:    
+        global treatment_content
+        treatment_content = treatment_match.group(1).strip()
     
     if debug_enabled:
         print(f"{DEBUG_MSG_PREFIX}cervical_sentences -> {cervical_sentences}")
@@ -600,7 +601,6 @@ def retrieve_info_from_SD(filename: str) -> None:
         print(f"{DEBUG_MSG_PREFIX}lumbar_trigger -> {lumbar_trigger}")
         print(f"{DEBUG_MSG_PREFIX}lumbar_rom -> {lumbar_rom}")   
         print(f"{DEBUG_MSG_PREFIX}lumbar_pain -> {lumbar_pain}")                 
-        print(f"{DEBUG_MSG_PREFIX}lumbar tenderness sentence -> {lumbar_tenderness_sentence}")
         
         print(f"{DEBUG_MSG_PREFIX}sorted_cervical_sentences -> {sorted_cervical_sentences}")  
         print(f"{DEBUG_MSG_PREFIX}sorted_thoracic_sentences -> {sorted_thoracic_sentences}")  
@@ -689,7 +689,7 @@ def add_header_section(date: Date) -> None:
 
 
 def generate_content() -> None:
-    global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, sorted_cervical_sentences, sorted_thoracic_sentences, sorted_lumbar_sentences, lumbar_tenderness_sentence
+    global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, sorted_cervical_sentences, sorted_thoracic_sentences, sorted_lumbar_sentences, treatment_content
     if not patient:
         raise ValueError("Patient is None")
     
@@ -700,7 +700,6 @@ def generate_content() -> None:
         "sorted_cervical": sorted_cervical_sentences,
         "sorted_thoracic": sorted_thoracic_sentences,
         "sorted_lumbar": sorted_lumbar_sentences,
-        "lumbar_tenderness": lumbar_tenderness_sentence
     }
     
     note = Note(patient, sorted_sentences)
@@ -713,15 +712,17 @@ def generate_content() -> None:
     r.par(f"Assessment", style="s28")
     r.par(note.get_paragraph(Sections.ASSESSMENT.value), style="s21")
     r.par(f"Plan", style="s28")
-
+    r.par(note.get_paragraph(Sections.PLAN.value), style="s21")
+    r.par(f"Today\'s Treatment", style="s28")
+    r.par(treatment_content, style="s21")
 
 def do_single_fill() -> None:
     # get patient info from notes
     print(f"Retieving patient info...")
     filename = find_previous_note()
     # retrieve_info_from_SD(filename)
-    retrieve_info_from_SD("SD_Three_Regions_1.rtf")
-    # retrieve_info_from_SD("SD_opened_with_word_alt.rtf")
+    # retrieve_info_from_SD("SD_Three_Regions_1.rtf")
+    retrieve_info_from_SD("SD_opened_with_word.rtf")
     
     # ask for a date
     date = get_date_from_calendar()
