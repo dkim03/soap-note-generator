@@ -7,7 +7,7 @@ DESC:
 
 Author: David J. Kim,
 Created: 01-16-2026,
-Modified: 02-11-2026,
+Modified: 02-13-2026,
 Version: 1.0.0
 
 USAGE:
@@ -42,7 +42,7 @@ DEPENDENCIES:
     - Ratings
 """
 
-import os, re
+import os, re, random
 import tkinter as tk
 from simplertf import simplertf
 
@@ -57,12 +57,12 @@ from Note import Note
 from Patient import Patient
 from Ratings import Ratings
 
-r = simplertf.RTF("Test Generation")
+r = simplertf.RTF("'AutoSOAP' by dkim03")
 r.stylesheet = "English"
 
 class Operations(Enum):
     SINGLE_FILL = 1
-    PARTIAL_FILL = 2
+    MULTI_FILL = 2
     FULL_FILL = 3
     
 class Sections(Enum):
@@ -100,6 +100,7 @@ sorted_cervical_sentences = []
 sorted_thoracic_sentences = []
 sorted_lumbar_sentences = []
 
+# store TODAY'S TREATMENT section verbatim
 treatment_content = ""
 
 # ------------------------------------------------------------------------------------------------------------------------
@@ -107,7 +108,7 @@ treatment_content = ""
 # ------------------------------------------------------------------------------------------------------------------------
 # there are different functions the user can use to generate notes
 # - FULL FILL when exams exist, but no notes in-between
-# - PARTIAL FILL when exams and notes exist, but some notes are missing
+# - MULTI FILL when exams and notes exist, but some notes are missing
 # - SINGLE FILL when you just want to generate a single note
 # - NO EXAMS OR NOTES when you want to completely generate all docs (extended in later version)
 
@@ -132,7 +133,7 @@ treatment_content = ""
 # - using any reference exam (EI, EN, EF), user can fully generate the missing notes in-between each exam 
 
 # ==================================================
-#                   PARTIAL FILL
+#                   MULTI FILL
 # ==================================================
 # info retrieved from user:
 # - list of dates (1/2/26, 1/7/26, etc.)
@@ -186,7 +187,9 @@ treatment_content = ""
 #   > SOAP note patient info retrieval              X
 #   > ratings, etc. retrieval                       X
 #   > note generation algo                          X
-#   PARTIAL FILL                                *
+#   MULTI FILL                                  X
+#   > date & rating retrieval                       X
+#   > rating generator integration                  X
 #   FULL FILL                                   -
 #   Tkinter GUI integration                     -
 #   Deployable prototype                        -
@@ -228,11 +231,11 @@ def get_single_date_prompt() -> Date:
 
 def select_function_prompt() -> int:
     # 1 -> single
-    # 2 -> partial
+    # 2 -> multi
     # 3 -> full
     while True:
         user_input = input("""Please select a fill function:\n  Enter '1' for SINGLE FILL
-  Enter '2' for PARTIAL FILL\n  Enter '3' for FULL FILL\n""")
+  Enter '2' for MULTI FILL\n  Enter '3' for FULL FILL\n""")
         try:
             # input checks
             if not len(user_input) == 1:
@@ -375,6 +378,8 @@ def retrieve_info_from_SD(filename: str) -> None:
         date_parts = dob.strip().split("/")
         month, day, year = map(int, date_parts)
         
+        # if the font ever changes, this needs to be changed
+        # can probably replace the rtf keywords with variables
         new_pattern = (
             rf"{last}\\par}}\s+"
             r"{\\pard\s+\\s27\\ql\\f4\\fs22\\lang1033\s+(?P<street>.*?)\\par}\s+"
@@ -419,7 +424,7 @@ def retrieve_info_from_SD(filename: str) -> None:
     # find regions in regards to tenderness/palpation
     # problem with this is that it gets ALL cervical regions, this is not correct
     # one way to do this is to get all sentences that mention a spinous process then scan for C#, T#, or L# since
-    # those sentences are always related to tenderness/palpation (afaik)
+    # those sentences are always related to tenderness/palpation
     
     tenderness_targets = ["spinous process", "spinous levels", "following levels"]
     tenderness_region_sentences = []
@@ -652,7 +657,7 @@ def get_date_from_calendar() -> date | None:
         selectmode="day",
         date_pattern="mm/dd/yyyy"
     )
-    cal.pack(padx=10, pady=10)
+    cal.pack(padx=20, pady=20)
 
     def ok():
         nonlocal selected_date
@@ -667,6 +672,63 @@ def get_date_from_calendar() -> date | None:
 
     return selected_date
     
+    
+def get_multiple_dates_from_calendar() -> list:
+    selected_dates = set()
+    
+    root = tk.Tk()
+    root.withdraw()
+
+    win = tk.Toplevel(root)
+    win.title("Select dates")
+    # Ensure the window handles the "X" button correctly too
+    win.protocol("WM_DELETE_WINDOW", lambda: root.quit())
+
+    cal = Calendar(win, selectmode="day", date_pattern="mm/dd/yyyy")
+    cal.pack(padx=20, pady=20)
+    cal.tag_config('selected', background='red', foreground='white')
+    
+    def toggle_date(event):
+        try:
+            selected = cal.selection_get()
+            if selected in selected_dates:
+                selected_dates.remove(selected)
+                ev_ids = cal.get_calevents(date=selected, tag='selected')
+                for ev_id in ev_ids:
+                    cal.calevent_remove(ev_id)
+            else:
+                selected_dates.add(selected)
+                cal.calevent_create(selected, 'Selected', 'selected')
+            cal.selection_clear()
+        except Exception:
+            pass # Prevent errors if clicking during closure
+    
+    cal.bind("<<CalendarSelected>>", toggle_date)
+    
+    def ok():
+        # 1. Close the Toplevel immediately to stop user interaction
+        win.withdraw() 
+        # 2. Stop the mainloop
+        root.quit()
+
+    tk.Button(win, text="OK", command=ok).pack(pady=15)
+
+    # Use mainloop instead of wait_window for better stability
+    root.mainloop() 
+    
+    # 3. Final cleanup after loop exits
+    for after_id in root.tk.call('after', 'info'):
+        root.after_cancel(after_id)
+    
+    try:
+        root.destroy()
+    except tk.TclError:
+        pass # If it's already gone, don't crash
+    
+    ordered_dates = sorted(list(selected_dates))
+        
+    return ordered_dates
+
     
 def add_header_section(date: Date) -> None:
     if not patient:
@@ -695,7 +757,7 @@ def add_header_section(date: Date) -> None:
     r.par(f"{date.get_date_standard()}", style="s28")
 
 
-def generate_content() -> None:
+def generate_content(complaint_ratings=None) -> None:
     global patient, tender_cervical_regions, tender_thoracic_regions, tender_lumbar_regions, sorted_cervical_sentences, sorted_thoracic_sentences, sorted_lumbar_sentences, treatment_content
     if not patient:
         raise ValueError("Patient is None")
@@ -709,7 +771,7 @@ def generate_content() -> None:
         "sorted_lumbar": sorted_lumbar_sentences,
     }
     
-    note = Note(patient, sorted_sentences)
+    note = Note(patient, sorted_sentences, complaint_ratings)
 
     # add sections
     r.par(f"Subjective Complaint", style="s28")
@@ -741,8 +803,6 @@ def do_single_fill() -> None:
     doc_id = int(re.sub(r"[^\d]", "", match.group(0).strip()))
     doc_id += 1 # increment
     
-    print(doc_id)
-    
     # ask for a date
     date = get_date_from_calendar()
     temp = None
@@ -750,28 +810,30 @@ def do_single_fill() -> None:
         temp = Date(date.month, date.day, date.year)
     else:
         raise ValueError("Recieved date is None")
-    
-    # split note generation into 4 sections:
-    # - page setup & document header        X
-    # - SUBJECTIVE                          X
-    # - OBJECTIVE                           X
-    # - ASSESSMENT                          X
-    # - PLAN & TREATMENT                    X
+
     add_header_section(temp)
     generate_content()
     
     # add footer text
     if patient:
         r.set_footer(line1=patient.get_full_name(), line2="Confidential")
-        temp_first = patient.get_first_name()
-        temp_last = patient.get_last_name()
-        r.create(f"SD_{temp_first}_{temp_last}_{doc_id}") # output .rtf file
+        new_filename = f"SD_{patient.get_first_name()}_{patient.get_last_name()}_{doc_id}"
+        r.create(new_filename, NOTES_PATH) # output .rtf file to parent directory
+        print(f"\n{INFO_MSG_PREFIX}Document successfully saved as <{new_filename}.rtf>!")
         
     print_success_msg()
     
 
-# TODO
-def do_partial_fill() -> None:
+def do_multi_fill() -> None:
+    global patient
+    
+    print(f"{INFO_MSG_PREFIX}Retieving patient info...")
+    filename = find_previous_note()
+    retrieve_info_from_SD(filename)    
+    
+    # check if null    
+    if not patient:
+        raise ValueError("Patient is None")    
     
     # starts from a prev note
     # prompt the user to get the number of notes to generate
@@ -779,9 +841,55 @@ def do_partial_fill() -> None:
     # retrieve a single target rating for notes to converge towards
     # utilize rating interpolation algo to generate believable ratings
     # ensure naming convention is followed by all notes created
+    # get patient info from notes
     
-    pass
-
+    dates = get_multiple_dates_from_calendar()
+    final_ratings = get_final_ratings()
+    
+    # for each complaint, generate a list of numbers using the algo
+    # we only need to generate this ONCE per fill
+    complaint_ratings = []
+    for i, (complaint, rating) in enumerate(patient.get_ratings().items()):
+        complaint_ratings.append(get_guaranteed_staircase_path(start=rating, target=final_ratings[i], total_runs=len(dates)))
+    
+    for ratings in complaint_ratings:
+        print(ratings)
+    
+    if dates:
+        global r
+        for date in dates:
+            clear_globals()
+            print(f"{INFO_MSG_PREFIX}Retieving patient info...")
+            filename = find_previous_note()
+            retrieve_info_from_SD(filename)
+            
+            match = re.search(r"_\d+", filename)
+            if not match:
+                raise ValueError(f"{filename}: filename is not numbered and/or formatted correctly. Make sure the filename looks like this -> SD_First_Last_2")
+            
+            doc_id = int(re.sub(r"[^\d]", "", match.group(0).strip()))
+            doc_id += 1
+            
+            temp = Date(date.month, date.day, date.year)
+            add_header_section(temp)
+            
+            # the target ratings are already generated, pass this in
+            generate_content(complaint_ratings)
+            
+            # add footer text
+            if patient:
+                r.set_footer(line1=patient.get_full_name(), line2="Confidential")
+                new_filename = f"SD_{patient.get_first_name()}_{patient.get_last_name()}_{doc_id}"
+                r.create(new_filename, NOTES_PATH) # output .rtf file to parent directory
+                print(f"\n{INFO_MSG_PREFIX}Document successfully saved as <{new_filename}.rtf>!")
+            
+            # reset rtf obj
+            r = simplertf.RTF("'AutoSOAP' by dkim03")
+            r.stylesheet = "English"
+            
+    else:
+        raise ValueError("Recieved dates is None")
+    
 
 # TODO
 def do_full_fill() -> None:
@@ -791,19 +899,108 @@ def do_full_fill() -> None:
     
     pass
 
+
+def get_final_ratings() -> list[int]:
+    global patient
+    
+    # check if null
+    if not patient:
+        raise ValueError("Patient is None")   
+    
+    final_ratings = []
+    rating_ceiling = 10
+    total_pain = 0
+    ratings = patient.get_ratings()
+    for complaint, rating in ratings.items():
+        getting_input = True
+        if complaint != "pain" and complaint != "health":
+            while getting_input:
+                user_input = input(f"Please enter a final target rating for {complaint}, starting at {rating}: ")
+                if not re.fullmatch(r'[0-9]', user_input):
+                    print("Invalid input, please enter a number in the range 0-9. Try again.")
+                else:
+                    final_ratings.append(int(user_input))
+                    getting_input = False
+                
+                    # higher pain ratings contribute more to the overall pain value
+                    # can tweak this so that age/gender affects perceived pain values
+                    bonus_pain_value = 0
+                    if int(user_input) > 4 and len(ratings) > 4:
+                        bonus_pain_value += (len(ratings)-4)
+                    
+                    total_pain += int(user_input) + bonus_pain_value # add up pain
+                    getting_input = False
+            
+    # calculate pain and health and
+    avg_pain = min(round(total_pain / (len(ratings)-2)) + random.randint(0, 1), 10)
+    health = max((rating_ceiling - avg_pain) + random.randint(-3, 0), 0)             
+    
+    final_ratings.append(avg_pain)
+    final_ratings.append(health)   
+
+    return final_ratings
+
+
+def clear_globals() -> None:
+    tender_cervical_regions.clear()
+    tender_thoracic_regions.clear()
+    tender_lumbar_regions.clear()
+    sorted_cervical_sentences.clear()
+    sorted_thoracic_sentences.clear
+    sorted_lumbar_sentences.clear()
+
+
+def get_guaranteed_staircase_path(start, target, total_runs) -> list[int]:
+    rating_ceiling = 10
+    
+    path = [start]
+    current_val = start
+    
+    # + 2 because we skip the first value as that is the STARTING value, thus
+    # we need to exclude it from the generation and do another run
+    for i in range(1, total_runs + 1):
+        # on last step, force the target to guarantee the hit
+        if i == total_runs:
+            path.append(target)
+            break
+            
+        # calculate the 'Ideal' next step to stay on track
+        remaining_runs = total_runs - i
+        distance_to_go = target - current_val
+        ideal_step = distance_to_go / remaining_runs
+        
+        # configure chance
+        up_chance = 0.1
+        down_chance = 0.9 * (0.90 ** i) # adaptive down chance
+        
+        noise = 0
+        if random.random() < up_chance:
+            noise = random.randint(1, 3)
+        elif target < current_val and random.random() < down_chance:
+            noise = -random.randint(0, 1)
+            
+        # move toward target + noise
+        if target > start:
+            current_val = round(min((max(int(current_val + noise + round(ideal_step * 0.75)), start)), rating_ceiling))
+        else:
+            current_val = round(min(max(int(current_val + noise + round(ideal_step * 0.75)), target), rating_ceiling))
+        path.append(current_val)
+        
+    return path
+
         
 def main():
     ask_for_debug()
     
     # first thing to do is to prompt the user whether they want to proceed w/
-    # single, partial, or full fill for SOAP generation
+    # single, multi, or full fill for SOAP generation
     try:
         match select_function_prompt():
             case Operations.SINGLE_FILL.value:
                 do_single_fill()
                 
-            case Operations.PARTIAL_FILL.value:
-                do_partial_fill()
+            case Operations.MULTI_FILL.value:
+                do_multi_fill()
                 
             case Operations.FULL_FILL.value:
                 do_full_fill()

@@ -36,22 +36,37 @@ class Sections(Enum):
     ASSESSMENT = 2
     PLAN = 3
     
-target_ratings = None
+target_ratings: dict[str, int] = {}
 overall_assessment = ""
 improving_complaints = []
 unchanged_complaints = []
 worsening_complaints = []
 
+# start at 1, idx 0 is storing the prev note ratings
+note_counter = 1
+
 class Note:
-    def __init__(self, patient: Patient, sorted_sentences: dict[str, list]):
-        global target_ratings, overall_assessment
+    def __init__(self, patient: Patient, sorted_sentences: dict[str, list], complaint_ratings=None):
+        global target_ratings, overall_assessment, improving_complaints, unchanged_complaints, worsening_complaints, note_counter
         self.patient = patient
-        target_ratings = self.get_target_ratings() # get the target rating for this note obj
+        
+        # reset global variables
+        overall_assessment = ""
+        improving_complaints.clear()
+        unchanged_complaints.clear()
+        worsening_complaints.clear()
+        
+        # are ratings already generated?
+        if not complaint_ratings: # no, do manual
+            target_ratings = self.get_target_ratings() # get the target rating for this note obj manually
+        else: # yes, map the ratings out
+            for i, (complaint, rating) in enumerate(patient.get_ratings().items()):
+                target_ratings[complaint] = complaint_ratings[i][note_counter]
+            note_counter+=1 # increment to next set of ratings for next note
         
         self.sorted_sentences = sorted_sentences
         
         # SUBJECTIVE sentence bank
-        # 1st sentence
         self.subjective_intro = [
             f"{self.patient.get_formal_name()} was evaluated today to determine progress and response to the current treatment plan.",
             f"{self.patient.get_formal_name()} was evaluated today to assess {self.patient.get_pronoun_possessive()} response to care.",
@@ -62,7 +77,6 @@ class Note:
             f"{self.patient.get_formal_name()}'s overall response to the treatment plan was evaluated today."
         ]
 
-        # 2nd sentence
         self.subjective_pain_intro = [
             f" The following are the patient's subjective response to questions regarding {self.patient.get_pronoun_possessive()} pain levels: ",
             " The patient's subjective response to a question regarding pain levels: ",
@@ -73,7 +87,6 @@ class Note:
             f" The patient was asked subjective questions regarding {self.patient.get_pronoun_possessive()} pain levels: "
         ]
         
-        # 3rd sentence
         self.subjective_overall_pain = [
             " Overall pain level today on a scale of 0 (no pain) to 10 (excruciating pain) is considered a ",
             " Current pain level today on a scale of 0 (no pain) to 10 (unbearable pain) is considered a ",
@@ -81,7 +94,6 @@ class Note:
             f" General pain level today, on a scale of 0 (no pain) to 10 (unbearable pain), is evaluated as "
         ]
         
-        # 4th sentence
         self.subjective_health = [
             f" The patient rated {self.patient.get_pronoun_possessive()} overall health on a scale of 1 to 10 as a ",
             f" The patient reported that {self.patient.get_pronoun_possessive()} overall health on a scale of 1 to 10 is rated as a ",
@@ -109,7 +121,6 @@ class Note:
             " Today, the following complaints have become worse since the last visit: "
         ]
         
-        # 5th sentence
         self.subjective_ratings = [
             f" On a scale of 0 to 10 with 10 being the worst, {self.patient.get_pronoun()} rated {self.patient.get_pronoun_possessive()} "
         ]
@@ -262,37 +273,6 @@ class Note:
             f"Today's visit indicates that {self.patient.get_first_name()} should proceed with therapy as directed."
         ]
 
-    def _get_guaranteed_staircase_path(self, start, target, total_runs) -> list[int]:
-        path = [start]
-        current_val = start
-        
-        for i in range(1, total_runs + 1):
-            # on last step, force the target to guarantee the hit
-            if i == total_runs:
-                path.append(target)
-                break
-                
-            # calculate the 'Ideal' next step to stay on track
-            remaining_runs = total_runs - i
-            distance_to_go = target - current_val
-            ideal_step = distance_to_go / remaining_runs
-            
-            # configure chance
-            up_chance = 0.1
-            down_chance = 0.9 * (0.90 ** i) # adaptive down chance
-            
-            noise = 0
-            if random.random() < up_chance:
-                noise = random.randint(0, 3)
-            elif target < current_val and random.random() < down_chance:
-                noise = -random.randint(0, 1)
-                
-            # move toward target + noise
-            current_val = round(min(max(int(current_val + noise + round(ideal_step * 0.75)), target), RATING_CEILING))
-            path.append(current_val)
-            
-        return path
-
     # current_val = 8    # Starting point
     # target_val = 3     # The goal we want to trend toward
     # steps = 20          # Number of iterations
@@ -362,7 +342,6 @@ class Note:
         
     
     def get_target_ratings(self) -> dict[str, int]:
-        getting_input = True
         ratings_copy = self.patient.get_ratings().copy()
         total_pain = 0
         for complaint, rating in ratings_copy.items():
